@@ -69,8 +69,11 @@ class DiscourseAutoRead:
             else:
                 raise Exception("No authentication method provided")
             
-            # Read posts
+            # Read unread posts
             self.read_posts()
+            
+            # Read new posts
+            self.read_new_posts()
             
         except Exception as e:
             logger.error(f"Error: {e}")
@@ -223,6 +226,74 @@ class DiscourseAutoRead:
         
         logger.info(f"Completed reading {count} topics.")
 
+    def read_new_posts(self):
+        """Read new posts from /new page"""
+        max_new_topics = int(os.getenv('MAX_NEW_TOPICS', 20))
+        logger.info(f"Starting to read new posts (max: {max_new_topics})...")
+        
+        count = 0
+        visited_urls = set()
+        
+        while count < max_new_topics:
+            target_page = f"{self.url}/new"
+            logger.info(f"Navigating to {target_page}")
+            self.driver.get(target_page)
+            
+            time.sleep(3)
+            self.handle_cloudflare()
+            
+            try:
+                wait = WebDriverWait(self.driver, 15)
+                wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".topic-list")))
+                logger.info("Topic list loaded.")
+            except TimeoutException:
+                logger.warning("No topic list found on /new page.")
+                break
+            
+            # Get topic links
+            topic_link = self.get_first_new_topic(visited_urls)
+            if not topic_link:
+                logger.info("No more new topics to read.")
+                break
+            
+            topic_url = topic_link.get_attribute('href')
+            visited_urls.add(topic_url)
+            
+            logger.info(f"Reading new topic ({count+1}/{max_new_topics})...")
+            
+            try:
+                topic_link.click()
+                time.sleep(2)
+                
+                if self.check_topic_error():
+                    logger.error("Topic load error detected")
+                    continue
+                
+                self.simulate_reading()
+                count += 1
+                logger.info(f"Finished reading new topic {count}/{max_new_topics}")
+                
+            except Exception as e:
+                logger.error(f"Failed to read new topic: {e}")
+                continue
+        
+        logger.info(f"Completed reading {count} new topics.")
+
+    def get_first_new_topic(self, visited_urls):
+        """Find the first unvisited topic link on /new page"""
+        try:
+            topic_links = self.driver.find_elements(
+                By.CSS_SELECTOR, ".topic-list-item .main-link a.title"
+            )
+            for link in topic_links:
+                href = link.get_attribute('href')
+                if href and href not in visited_urls and link.is_displayed():
+                    logger.info(f"Found new topic: {link.text[:50]}...")
+                    return link
+        except Exception as e:
+            logger.error(f"Error finding new topic: {e}")
+        return None
+
     def get_first_unread_badge(self):
         """Find the first unread badge"""
         selectors = [
@@ -295,8 +366,67 @@ class DiscourseAutoRead:
             self.driver.execute_script(f"window.scrollBy(0, {scroll_step})")
             time.sleep(0.5)
         
+        # Random like before leaving the topic
+        self.random_like()
+        
         time.sleep(random.uniform(4, 6))
         logger.info("Finished reading topic.")
+
+    def random_like(self):
+        """Random like 2-3 posts during reading"""
+        like_count = random.randint(2, 3)
+        logger.info(f"Attempting to like {like_count} posts...")
+        
+        liked = 0
+        
+        try:
+            # Find all likeable buttons (not already liked)
+            like_selectors = [
+                "button.widget-button.like:not(.has-like):not(.my-likes)",
+                "button.toggle-like:not(.has-like):not(.my-likes)",
+                ".post-controls button.like:not(.has-like)",
+            ]
+            
+            like_buttons = []
+            for selector in like_selectors:
+                try:
+                    buttons = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    like_buttons.extend([b for b in buttons if b.is_displayed()])
+                except Exception:
+                    continue
+            
+            if not like_buttons:
+                logger.info("No likeable posts found.")
+                return
+            
+            # Remove duplicates and shuffle
+            unique_buttons = list({b.id: b for b in like_buttons}.values())
+            random.shuffle(unique_buttons)
+            
+            for button in unique_buttons[:like_count]:
+                try:
+                    # Scroll to button
+                    self.driver.execute_script(
+                        "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});",
+                        button
+                    )
+                    time.sleep(random.uniform(0.5, 1.0))
+                    
+                    button.click()
+                    liked += 1
+                    logger.info(f"Liked post {liked}/{like_count}")
+                    
+                    # Random delay between likes
+                    time.sleep(random.uniform(1.0, 2.0))
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to like post: {e}")
+                    continue
+            
+            logger.info(f"Successfully liked {liked} posts.")
+            
+        except Exception as e:
+            logger.error(f"Error during random liking: {e}")
 
 
 def main():
