@@ -372,94 +372,111 @@ class DiscourseAutoRead:
         time.sleep(random.uniform(4, 6))
         logger.info("Finished reading topic.")
 
+    def find_likeable_elements(self):
+        """Find all likeable elements on the current page"""
+        like_containers = []
+        
+        # Primary selector: Discourse Reactions plugin container
+        try:
+            containers = self.driver.find_elements(
+                By.CSS_SELECTOR, "div.discourse-reactions-reaction-button"
+            )
+            for c in containers:
+                try:
+                    if c.is_displayed():
+                        # Check if not already liked by looking for unliked icon
+                        svg = c.find_element(By.CSS_SELECTOR, "svg.d-icon-d-unliked")
+                        if svg:
+                            like_containers.append(c)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        
+        # Fallback: Standard Discourse selectors
+        if not like_containers:
+            fallback_selectors = [
+                "button.widget-button.like:not(.has-like):not(.my-likes)",
+                "button.toggle-like:not(.has-like):not(.my-likes)",
+            ]
+            for selector in fallback_selectors:
+                try:
+                    buttons = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    like_containers.extend([b for b in buttons if b.is_displayed()])
+                except Exception:
+                    continue
+        
+        return like_containers
+
     def random_like(self):
         """Random like 2-3 posts during reading"""
         like_count = random.randint(2, 3)
         logger.info(f"Attempting to like {like_count} posts...")
         
         liked = 0
+        liked_positions = set()  # Track positions we've already liked
+        max_attempts = like_count * 3  # Prevent infinite loops
+        attempts = 0
         
-        try:
-            # For Discourse Reactions plugin (used by linux.do)
-            # Target the parent container div instead of the button to avoid click interception
-            like_containers = []
+        while liked < like_count and attempts < max_attempts:
+            attempts += 1
             
-            # Primary selector: the parent container that receives clicks
             try:
-                containers = self.driver.find_elements(
-                    By.CSS_SELECTOR, "div.discourse-reactions-reaction-button"
-                )
-                for c in containers:
-                    if c.is_displayed():
-                        # Check if not already liked by looking for unliked icon
-                        try:
-                            svg = c.find_element(By.CSS_SELECTOR, "svg.d-icon-d-unliked")
-                            if svg:
-                                like_containers.append(c)
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-            
-            # Fallback: Standard Discourse selectors
-            if not like_containers:
-                fallback_selectors = [
-                    "button.widget-button.like:not(.has-like):not(.my-likes)",
-                    "button.toggle-like:not(.has-like):not(.my-likes)",
-                ]
-                for selector in fallback_selectors:
+                # Re-find elements each time to avoid stale references
+                like_containers = self.find_likeable_elements()
+                
+                if not like_containers:
+                    if liked == 0:
+                        logger.info("No likeable posts found.")
+                    break
+                
+                if liked == 0:
+                    logger.info(f"Found {len(like_containers)} likeable posts.")
+                
+                # Filter out positions we've already tried
+                available = []
+                for i, elem in enumerate(like_containers):
                     try:
-                        buttons = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                        like_containers.extend([b for b in buttons if b.is_displayed()])
+                        # Use element location as position identifier
+                        loc = elem.location
+                        pos_key = f"{loc['x']},{loc['y']}"
+                        if pos_key not in liked_positions:
+                            available.append((elem, pos_key))
                     except Exception:
                         continue
-            
-            if not like_containers:
-                logger.info("No likeable posts found.")
-                return
-            
-            logger.info(f"Found {len(like_containers)} likeable posts.")
-            
-            # Remove duplicates and shuffle
-            seen_ids = set()
-            unique_elements = []
-            for elem in like_containers:
-                elem_id = id(elem)
-                if elem_id not in seen_ids:
-                    seen_ids.add(elem_id)
-                    unique_elements.append(elem)
-            random.shuffle(unique_elements)
-            
-            for element in unique_elements[:like_count]:
+                
+                if not available:
+                    logger.info("No more unliked posts available.")
+                    break
+                
+                # Pick a random element
+                element, pos_key = random.choice(available)
+                liked_positions.add(pos_key)
+                
+                # Scroll to element
+                self.driver.execute_script(
+                    "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});",
+                    element
+                )
+                time.sleep(random.uniform(0.5, 1.0))
+                
+                # Try regular click first, fallback to JavaScript click
                 try:
-                    # Scroll to element
-                    self.driver.execute_script(
-                        "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});",
-                        element
-                    )
-                    time.sleep(random.uniform(0.5, 1.0))
-                    
-                    # Try regular click first
-                    try:
-                        element.click()
-                    except Exception:
-                        # Fallback to JavaScript click if regular click fails
-                        self.driver.execute_script("arguments[0].click();", element)
-                    
-                    liked += 1
-                    logger.info(f"Liked post {liked}/{like_count}")
-                    
-                    # Random delay between likes
-                    time.sleep(random.uniform(1.0, 2.0))
-                    
-                except Exception as e:
-                    logger.warning(f"Failed to like post: {e}")
-                    continue
-            
-            logger.info(f"Successfully liked {liked} posts.")
-            
-        except Exception as e:
-            logger.error(f"Error during random liking: {e}")
+                    element.click()
+                except Exception:
+                    self.driver.execute_script("arguments[0].click();", element)
+                
+                liked += 1
+                logger.info(f"Liked post {liked}/{like_count}")
+                
+                # Random delay between likes
+                time.sleep(random.uniform(1.0, 2.0))
+                
+            except Exception as e:
+                logger.warning(f"Failed to like post: {e}")
+                continue
+        
+        logger.info(f"Successfully liked {liked} posts.")
 
 
 def main():
