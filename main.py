@@ -410,7 +410,10 @@ class DiscourseAutoRead:
 
     def random_like(self):
         """Random like 2-3 posts during reading"""
-        like_count = random.randint(2, 3)
+        # like_count = random.randint(2, 3)
+        max_likes = int(os.getenv('MAX_LIKES', 5))
+        like_count = random.randint((max_likes-1), max_likes)
+        
         logger.info(f"Attempting to like {like_count} posts...")
         
         liked = 0
