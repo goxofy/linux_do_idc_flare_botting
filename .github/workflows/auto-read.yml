@@ -44,6 +44,7 @@ jobs:
           COOKIE_STRING_2: ${{ secrets.COOKIE_STRING_2 }}
           MAX_TOPICS: ${{ vars.MAX_TOPICS || '10' }}
           MAX_NEW_TOPICS: ${{ vars.MAX_NEW_TOPICS || '20' }}
+          MAX_LIKES: ${{ vars.MAX_LIKES || '3' }}
           HEADLESS: false
           LOGIN_TIMEOUT: 120
           ENABLE_RECORDING: ${{ vars.ENABLE_RECORDING || 'false' }}
