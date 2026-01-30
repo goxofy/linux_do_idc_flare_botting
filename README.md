@@ -11,6 +11,7 @@
 - ✅ 随机点赞
 - ✅ 支持多个论坛
 - ✅ 可选录屏功能
+- ✅ **TuneHub 自动签到**（通过 Linux DO SSO）
 
 ## 快速开始
 
@@ -77,6 +78,19 @@ schedule:
 - ⚠️ 请确保你的账号密码正确
 - ⚠️ 不要过于频繁运行，以免被论坛封禁
 - ⚠️ 本项目仅供学习交流使用
+
+## TuneHub 自动签到
+
+当 `TARGET_URL` 或 `TARGET_URL_2` 包含 `linux.do` 时，程序会在完成论坛刷帖任务后自动进行 TuneHub 签到：
+
+1. 打开 TuneHub 登录页面
+2. 点击「使用 Linux DO 账号一键登录」
+3. 在 Linux DO OAuth 页面点击「允许」授权
+4. 自动跳转到 TuneHub Dashboard
+5. 点击「每日签到」按钮
+6. 记录签到前后积分变化
+
+**无需额外配置**，只要你的 `TARGET_URL` 是 `https://linux.do`，签到功能就会自动启用。
 
 ## License
 

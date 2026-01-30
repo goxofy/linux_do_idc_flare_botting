@@ -82,6 +82,61 @@ class DiscourseAutoRead:
             if self.driver:
                 self.driver.quit()
 
+    def start_without_quit(self):
+        """Main entry point - keeps browser open for subsequent operations"""
+        try:
+            # Setup Chrome options
+            options = uc.ChromeOptions()
+            
+            headless = os.getenv('HEADLESS', 'true').lower() == 'true'
+            if headless:
+                options.add_argument('--headless=new')
+            
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--window-size=1920,1080')
+            options.add_argument('--disable-blink-features=AutomationControlled')
+            options.add_argument('--disable-infobars')
+            options.add_argument('--disable-extensions')
+            options.add_argument('--disable-popup-blocking')
+            options.add_argument('--start-maximized')
+            options.add_argument('--lang=zh-CN,zh,en-US,en')
+            
+            logger.info("Launching undetected Chrome (v143)...")
+            self.driver = uc.Chrome(
+                options=options,
+                use_subprocess=True,
+                version_main=143
+            )
+            self.driver.set_page_load_timeout(60)
+            
+            user_agent = self.driver.execute_script("return navigator.userAgent")
+            logger.info(f"User-Agent: {user_agent}")
+            
+            # Perform login
+            if self.username and self.password:
+                self.login_with_credentials()
+            elif self.cookie_str:
+                self.login_with_cookies()
+            else:
+                raise Exception("No authentication method provided")
+            
+            # Read unread posts
+            self.read_posts()
+            
+            # Read new posts
+            self.read_new_posts()
+            
+            # Note: Driver is NOT quit here - will be used for TuneHub check-in
+            logger.info("Forum tasks completed. Browser kept alive for TuneHub check-in.")
+            
+        except Exception as e:
+            logger.error(f"Error: {e}")
+            if self.driver:
+                self.driver.quit()
+            raise
+
     def login_with_credentials(self):
         """Login using username and password"""
         login_url = f"{self.url}/login"
@@ -481,6 +536,139 @@ class DiscourseAutoRead:
         
         logger.info(f"Successfully liked {liked} posts.")
 
+    def tunehub_checkin(self):
+        """Perform TuneHub daily check-in using Linux DO SSO"""
+        logger.info("Starting TuneHub check-in...")
+        
+        tunehub_login_url = "https://tunehub.sayqz.com/login?redirect=/dashboard"
+        
+        try:
+            # Step 1: Navigate to TuneHub login page
+            logger.info(f"Navigating to {tunehub_login_url}...")
+            self.driver.get(tunehub_login_url)
+            time.sleep(3)
+            
+            # Step 2: Click "使用 Linux DO 账号一键登录" button
+            try:
+                wait = WebDriverWait(self.driver, 15)
+                login_button = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, "//*[@id='app']/div/section/main/div[2]/div[2]/button"))
+                )
+                logger.info("Found TuneHub login button. Clicking...")
+                login_button.click()
+                time.sleep(3)
+            except TimeoutException:
+                # Try alternative selector
+                try:
+                    login_button = self.driver.find_element(By.XPATH, "//button[contains(text(), 'Linux')]")
+                    login_button.click()
+                    time.sleep(3)
+                except Exception:
+                    logger.error("Failed to find TuneHub login button")
+                    return False
+            
+            # Step 3: Handle Linux DO OAuth authorization page
+            # Check if we're on the authorization page (connect.linux.do)
+            current_url = self.driver.current_url
+            if "connect.linux.do" in current_url:
+                logger.info("On Linux DO OAuth page. Looking for authorize button...")
+                try:
+                    wait = WebDriverWait(self.driver, 10)
+                    # Try the XPath first
+                    authorize_button = wait.until(
+                        EC.element_to_be_clickable((By.XPATH, "/html/body/div[2]/a[1]"))
+                    )
+                    logger.info("Found authorize button. Clicking '允许'...")
+                    authorize_button.click()
+                    time.sleep(3)
+                except TimeoutException:
+                    # Try alternative selectors for the authorize button
+                    try:
+                        authorize_button = self.driver.find_element(By.XPATH, "//a[contains(text(), '允许')]")
+                        authorize_button.click()
+                        time.sleep(3)
+                    except Exception:
+                        logger.warning("Could not find authorize button - may already be authorized")
+            
+            # Step 4: Wait for redirect to dashboard
+            logger.info("Waiting for TuneHub dashboard...")
+            try:
+                wait = WebDriverWait(self.driver, 20)
+                wait.until(EC.url_contains("tunehub.sayqz.com/dashboard"))
+                logger.info("Successfully logged into TuneHub!")
+                time.sleep(2)
+            except TimeoutException:
+                # Check if already on dashboard
+                if "dashboard" not in self.driver.current_url:
+                    logger.error("Failed to reach TuneHub dashboard")
+                    return False
+            
+            # Step 5: Get current points before check-in
+            try:
+                points_element = self.driver.find_element(
+                    By.XPATH, "//*[@id='app']/section/main/div/div[2]/div[1]/div/div/div/div[2]/span"
+                )
+                current_points = points_element.text.strip()
+                logger.info(f"Current points before check-in: {current_points}")
+            except Exception:
+                # Try alternative selector for points
+                try:
+                    points_element = self.driver.find_element(By.XPATH, "//span[contains(@class, 'points') or ancestor::div[contains(text(), '积分')]]")
+                    current_points = points_element.text.strip()
+                    logger.info(f"Current points before check-in: {current_points}")
+                except Exception:
+                    current_points = "unknown"
+                    logger.warning("Could not get current points")
+            
+            # Step 6: Click the daily check-in button
+            logger.info("Looking for check-in button...")
+            try:
+                checkin_button = self.driver.find_element(
+                    By.XPATH, "//*[@id='app']/section/main/div/div[1]/button"
+                )
+                if checkin_button.is_displayed() and checkin_button.is_enabled():
+                    logger.info("Found check-in button. Clicking '每日签到'...")
+                    checkin_button.click()
+                    time.sleep(3)
+                else:
+                    logger.warning("Check-in button not clickable - may have already checked in today")
+                    return True
+            except Exception:
+                # Try alternative selector
+                try:
+                    checkin_button = self.driver.find_element(By.XPATH, "//button[contains(text(), '签到')]")
+                    checkin_button.click()
+                    time.sleep(3)
+                except Exception as e:
+                    logger.warning(f"Could not find check-in button: {e}")
+                    return True
+            
+            # Step 7: Get new points after check-in
+            time.sleep(2)
+            try:
+                # Refresh to get updated points
+                self.driver.refresh()
+                time.sleep(2)
+                
+                points_element = self.driver.find_element(
+                    By.XPATH, "//*[@id='app']/section/main/div/div[2]/div[1]/div/div/div/div[2]/span"
+                )
+                new_points = points_element.text.strip()
+                logger.info(f"Points after check-in: {new_points}")
+                
+                if current_points != "unknown" and new_points != current_points:
+                    logger.info(f"Check-in successful! Points changed: {current_points} -> {new_points}")
+                else:
+                    logger.info("Check-in completed!")
+                    
+            except Exception:
+                logger.info("Check-in completed (could not verify new points)")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"TuneHub check-in failed: {e}")
+            return False
 
 def main():
     configs = []
@@ -505,6 +693,16 @@ def main():
         logger.error("No TARGET_URL found.")
         return
     
+    # Check if any config contains linux.do
+    linux_do_config = None
+    for cfg in configs:
+        if 'linux.do' in cfg['url'].lower():
+            linux_do_config = cfg
+            break
+    
+    # Track if we need to do TuneHub check-in
+    tunehub_bot = None
+    
     for cfg in configs:
         logger.info(f"Starting auto-read for: {cfg['url']}")
         try:
@@ -514,9 +712,32 @@ def main():
                 password=cfg.get('password'),
                 cookie_str=cfg.get('cookie')
             )
-            bot.start()
+            
+            # If this is linux.do, we need to keep the bot alive for TuneHub check-in
+            is_linux_do = 'linux.do' in cfg['url'].lower()
+            
+            if is_linux_do:
+                # Modified start that doesn't quit the driver immediately
+                bot.start_without_quit()
+                tunehub_bot = bot
+            else:
+                bot.start()
+                
         except Exception as e:
             logger.error(f"Error processing {cfg['url']}: {e}")
+    
+    # Perform TuneHub check-in if we have a linux.do session
+    if tunehub_bot:
+        try:
+            logger.info("=" * 50)
+            logger.info("Proceeding to TuneHub check-in using Linux DO session...")
+            tunehub_bot.tunehub_checkin()
+        except Exception as e:
+            logger.error(f"TuneHub check-in error: {e}")
+        finally:
+            if tunehub_bot.driver:
+                tunehub_bot.driver.quit()
+                logger.info("Browser closed.")
 
 
 if __name__ == "__main__":
