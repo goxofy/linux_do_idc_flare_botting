@@ -693,18 +693,10 @@ def main():
         logger.error("No TARGET_URL found.")
         return
     
-    # Check if any config contains linux.do
-    linux_do_config = None
-    for cfg in configs:
-        if 'linux.do' in cfg['url'].lower():
-            linux_do_config = cfg
-            break
-    
-    # Track if we need to do TuneHub check-in
-    tunehub_bot = None
-    
     for cfg in configs:
         logger.info(f"Starting auto-read for: {cfg['url']}")
+        is_linux_do = 'linux.do' in cfg['url'].lower()
+        
         try:
             bot = DiscourseAutoRead(
                 url=cfg['url'],
@@ -713,31 +705,27 @@ def main():
                 cookie_str=cfg.get('cookie')
             )
             
-            # If this is linux.do, we need to keep the bot alive for TuneHub check-in
-            is_linux_do = 'linux.do' in cfg['url'].lower()
-            
             if is_linux_do:
-                # Modified start that doesn't quit the driver immediately
+                # For linux.do: keep browser open for TuneHub check-in
                 bot.start_without_quit()
-                tunehub_bot = bot
+                
+                # Immediately perform TuneHub check-in while session is active
+                try:
+                    logger.info("=" * 50)
+                    logger.info("Proceeding to TuneHub check-in using Linux DO session...")
+                    bot.tunehub_checkin()
+                except Exception as e:
+                    logger.error(f"TuneHub check-in error: {e}")
+                finally:
+                    if bot.driver:
+                        bot.driver.quit()
+                        logger.info("Linux DO browser closed.")
             else:
+                # For other forums: normal start with auto-quit
                 bot.start()
                 
         except Exception as e:
             logger.error(f"Error processing {cfg['url']}: {e}")
-    
-    # Perform TuneHub check-in if we have a linux.do session
-    if tunehub_bot:
-        try:
-            logger.info("=" * 50)
-            logger.info("Proceeding to TuneHub check-in using Linux DO session...")
-            tunehub_bot.tunehub_checkin()
-        except Exception as e:
-            logger.error(f"TuneHub check-in error: {e}")
-        finally:
-            if tunehub_bot.driver:
-                tunehub_bot.driver.quit()
-                logger.info("Browser closed.")
 
 
 if __name__ == "__main__":
