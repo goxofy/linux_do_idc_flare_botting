@@ -622,14 +622,20 @@ class DiscourseAutoRead:
             
             # Step 6: Click the daily check-in button
             logger.info("Looking for check-in button...")
+            checkin_clicked = False
             try:
                 checkin_button = self.driver.find_element(
                     By.XPATH, "//*[@id='app']/section/main/div/div[1]/button"
                 )
                 if checkin_button.is_displayed() and checkin_button.is_enabled():
                     logger.info("Found check-in button. Clicking '每日签到'...")
-                    checkin_button.click()
-                    time.sleep(3)
+                    # Try regular click first
+                    try:
+                        checkin_button.click()
+                    except Exception:
+                        # Fallback to JavaScript click
+                        self.driver.execute_script("arguments[0].click();", checkin_button)
+                    checkin_clicked = True
                 else:
                     logger.warning("Check-in button not clickable - may have already checked in today")
                     return True
@@ -637,17 +643,69 @@ class DiscourseAutoRead:
                 # Try alternative selector
                 try:
                     checkin_button = self.driver.find_element(By.XPATH, "//button[contains(text(), '签到')]")
-                    checkin_button.click()
-                    time.sleep(3)
+                    try:
+                        checkin_button.click()
+                    except Exception:
+                        self.driver.execute_script("arguments[0].click();", checkin_button)
+                    checkin_clicked = True
                 except Exception as e:
                     logger.warning(f"Could not find check-in button: {e}")
                     return True
             
-            # Step 7: Get new points after check-in
+            if not checkin_clicked:
+                logger.warning("Check-in button was not clicked")
+                return True
+            
+            # Step 7: Wait for check-in to complete
+            # Primary method: wait for button text to change to "已签到"
+            logger.info("Waiting for check-in to complete...")
+            success_detected = False
+            
+            # Wait for button state change (button text becomes "已签到" or similar)
+            for attempt in range(10):  # Try for up to 10 seconds
+                time.sleep(1)
+                try:
+                    # Look for button with "已签到" text
+                    checked_button = self.driver.find_element(
+                        By.XPATH, "//button[contains(text(), '已签到')]"
+                    )
+                    if checked_button.is_displayed():
+                        logger.info("Check-in successful! Button changed to '已签到'")
+                        success_detected = True
+                        break
+                except Exception:
+                    pass
+                
+                # Also check for success message
+                try:
+                    success_msg = self.driver.find_element(
+                        By.XPATH, "//*[contains(text(), '签到成功')]"
+                    )
+                    if success_msg.is_displayed():
+                        logger.info(f"Check-in success message: {success_msg.text}")
+                        success_detected = True
+                        break
+                except Exception:
+                    pass
+                
+                logger.info(f"Waiting for check-in response... ({attempt + 1}/10)")
+            
+            # Wait a bit more for points to update
             time.sleep(2)
+            
+            # Step 8: Get new points after check-in
             try:
                 # Refresh to get updated points
                 self.driver.refresh()
+                time.sleep(3)
+                
+                # Wait for page to load
+                try:
+                    wait = WebDriverWait(self.driver, 10)
+                    wait.until(EC.presence_of_element_located((By.XPATH, "//*[@id='app']")))
+                except Exception:
+                    pass
+                
                 time.sleep(2)
                 
                 points_element = self.driver.find_element(
@@ -658,11 +716,16 @@ class DiscourseAutoRead:
                 
                 if current_points != "unknown" and new_points != current_points:
                     logger.info(f"Check-in successful! Points changed: {current_points} -> {new_points}")
+                elif success_detected:
+                    logger.info("Check-in completed (success message was shown)")
                 else:
-                    logger.info("Check-in completed!")
+                    logger.info("Check-in completed (points unchanged - may have already checked in today)")
                     
             except Exception:
-                logger.info("Check-in completed (could not verify new points)")
+                if success_detected:
+                    logger.info("Check-in completed (success message was shown)")
+                else:
+                    logger.info("Check-in completed (could not verify new points)")
             
             return True
             
