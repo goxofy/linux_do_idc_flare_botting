@@ -728,9 +728,163 @@ class DiscourseAutoRead:
                     logger.info("Check-in completed (could not verify new points)")
             
             return True
-            
+
         except Exception as e:
             logger.error(f"TuneHub check-in failed: {e}")
+            return False
+
+    def anyrouter_checkin(self):
+        """Perform AnyRouter sign-in using Linux DO SSO"""
+        logger.info("Starting AnyRouter sign-in...")
+
+        anyrouter_login_url = "https://anyrouter.top/login"
+
+        try:
+            # Step 1: Navigate to AnyRouter login page
+            logger.info(f"Navigating to {anyrouter_login_url}...")
+            self.driver.get(anyrouter_login_url)
+            time.sleep(3)
+
+            # Step 2: Click "使用 LinuxDO 继续" button
+            try:
+                wait = WebDriverWait(self.driver, 15)
+                login_button = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'LinuxDO')]"))
+                )
+                logger.info("Found AnyRouter LinuxDO login button. Clicking...")
+                login_button.click()
+                time.sleep(3)
+            except TimeoutException:
+                # Try alternative selectors
+                try:
+                    login_button = self.driver.find_element(
+                        By.XPATH, "//a[contains(text(), 'LinuxDO')]"
+                    )
+                    login_button.click()
+                    time.sleep(3)
+                except Exception:
+                    try:
+                        # Broader search for any clickable element mentioning LinuxDO
+                        login_button = self.driver.find_element(
+                            By.XPATH, "//*[contains(text(), 'LinuxDO') and (self::button or self::a or self::div)]"
+                        )
+                        try:
+                            login_button.click()
+                        except Exception:
+                            self.driver.execute_script("arguments[0].click();", login_button)
+                        time.sleep(3)
+                    except Exception:
+                        logger.error("Failed to find AnyRouter LinuxDO login button")
+                        return False
+
+            # Step 3: Handle Linux DO OAuth authorization page
+            current_url = self.driver.current_url
+            logger.info(f"Current URL after login click: {current_url}")
+
+            if "connect.linux.do" in current_url:
+                logger.info("On Linux DO OAuth page. Looking for authorize button...")
+                try:
+                    wait = WebDriverWait(self.driver, 10)
+                    authorize_button = wait.until(
+                        EC.element_to_be_clickable((By.XPATH, "/html/body/div[2]/a[1]"))
+                    )
+                    logger.info("Found authorize button. Clicking '允许'...")
+                    authorize_button.click()
+                    time.sleep(3)
+                except TimeoutException:
+                    try:
+                        authorize_button = self.driver.find_element(
+                            By.XPATH, "//a[contains(text(), '允许')]"
+                        )
+                        authorize_button.click()
+                        time.sleep(3)
+                    except Exception:
+                        logger.warning("Could not find authorize button - may already be authorized")
+            elif "linux.do" in current_url:
+                # May be on linux.do login page or intermediate redirect
+                logger.info(f"On linux.do page: {current_url}. Waiting for redirect...")
+                try:
+                    wait = WebDriverWait(self.driver, 15)
+                    wait.until(lambda d: "anyrouter.top" in d.current_url or "connect.linux.do" in d.current_url)
+                    time.sleep(2)
+                    # If redirected to connect.linux.do, handle authorization
+                    if "connect.linux.do" in self.driver.current_url:
+                        try:
+                            authorize_button = self.driver.find_element(
+                                By.XPATH, "/html/body/div[2]/a[1]"
+                            )
+                            authorize_button.click()
+                            time.sleep(3)
+                        except Exception:
+                            try:
+                                authorize_button = self.driver.find_element(
+                                    By.XPATH, "//a[contains(text(), '允许')]"
+                                )
+                                authorize_button.click()
+                                time.sleep(3)
+                            except Exception:
+                                logger.warning("Could not find authorize button after linux.do redirect")
+                except TimeoutException:
+                    logger.warning(f"Timeout waiting for redirect from {current_url}")
+
+            # Step 4: Wait for redirect back to AnyRouter
+            logger.info("Waiting for AnyRouter redirect...")
+            try:
+                wait = WebDriverWait(self.driver, 20)
+                wait.until(lambda d: "anyrouter.top" in d.current_url)
+                logger.info(f"Redirected to AnyRouter: {self.driver.current_url}")
+                time.sleep(3)
+            except TimeoutException:
+                if "anyrouter.top" not in self.driver.current_url:
+                    logger.error(f"Failed to redirect to AnyRouter. Current URL: {self.driver.current_url}")
+                    return False
+
+            # Step 5: Navigate to token page to finalize sign-in
+            token_url = "https://anyrouter.top/console/token"
+            logger.info(f"Navigating to {token_url}...")
+            self.driver.get(token_url)
+            time.sleep(5)
+
+            # Step 6: Verify sign-in success (toast preferred)
+            current_url = self.driver.current_url
+            logger.info(f"Final URL: {current_url}")
+
+            toast_detected = False
+            toast_text = ""
+
+            # Prefer checking for a toast notification (more reliable than URL alone)
+            try:
+                wait = WebDriverWait(self.driver, 10)
+                toast_el = wait.until(
+                    EC.visibility_of_element_located(
+                        (
+                            By.XPATH,
+                            "//*[(@role='alert' or contains(@class,'toast') or contains(@class,'Toast') or contains(@class,'notification') or contains(@class,'Notification')) and string-length(normalize-space(.))>0]"
+                        )
+                    )
+                )
+                toast_text = toast_el.text.strip()
+                toast_detected = True
+                logger.info(f"AnyRouter toast detected: {toast_text}")
+            except Exception:
+                pass
+
+            # Fallback: URL-based check
+            if "anyrouter.top" in current_url and "login" not in current_url:
+                if toast_detected:
+                    logger.info("AnyRouter sign-in successful! (toast confirmed)")
+                else:
+                    logger.info("AnyRouter sign-in likely successful! (no toast captured)")
+                return True
+
+            logger.warning(
+                f"AnyRouter sign-in may have failed. Current URL: {current_url}"
+                + (f" | toast={toast_text}" if toast_text else "")
+            )
+            return False
+
+        except Exception as e:
+            logger.error(f"AnyRouter sign-in failed: {e}")
             return False
 
 def main():
@@ -779,6 +933,14 @@ def main():
                     bot.tunehub_checkin()
                 except Exception as e:
                     logger.error(f"TuneHub check-in error: {e}")
+
+                # Immediately perform AnyRouter sign-in using the same session
+                try:
+                    logger.info("=" * 50)
+                    logger.info("Proceeding to AnyRouter sign-in using Linux DO session...")
+                    bot.anyrouter_checkin()
+                except Exception as e:
+                    logger.error(f"AnyRouter sign-in error: {e}")
                 finally:
                     if bot.driver:
                         bot.driver.quit()
