@@ -929,9 +929,14 @@ def main():
             
             if is_linux_do:
                 # For linux.do: keep browser open for TuneHub check-in
-                bot.start_without_quit()
+                try:
+                    bot.start_without_quit()
+                except Exception as e:
+                    logger.error(f"LinuxDO forum browsing error: {e}")
+                    logger.info("Continuing to check-in flow despite forum error...")
                 
                 # Immediately perform TuneHub check-in while session is active
+                # This runs even if start_without_quit() failed, as we might already be logged in
                 try:
                     logger.info("=" * 50)
                     logger.info("Proceeding to TuneHub check-in using Linux DO session...")
