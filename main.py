@@ -745,6 +745,18 @@ class DiscourseAutoRead:
             self.driver.get(anyrouter_home_url)
             time.sleep(3)
 
+            # Step 1.5: Close the system announcement dialog if present
+            try:
+                close_button = self.driver.find_element(
+                    By.XPATH, "//button[contains(text(), '关闭公告')] | //button[contains(text(), '今日关闭')] | //button[contains(@class, 'close')] | //button[@aria-label='close']"
+                )
+                logger.info("Found system announcement dialog. Closing it...")
+                close_button.click()
+                time.sleep(1)
+            except Exception:
+                logger.debug("No system announcement dialog found or already closed")
+                pass
+
             # Step 2: Click the "登录" button in top right
             logger.info("Looking for login button in top right...")
             try:
