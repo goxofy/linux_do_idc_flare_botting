@@ -740,58 +740,62 @@ class DiscourseAutoRead:
         anyrouter_home_url = "https://anyrouter.top/"
 
         try:
-            # Step 1: Navigate to AnyRouter homepage first (for proper referer)
+            # Step 1: Navigate to AnyRouter homepage (which directly shows login options)
             logger.info(f"Navigating to {anyrouter_home_url}...")
             self.driver.get(anyrouter_home_url)
             time.sleep(3)
 
             # Step 1.5: Close the system announcement dialog if present
             try:
-                close_button = self.driver.find_element(
-                    By.XPATH, "//button[contains(text(), '关闭公告')] | //button[contains(text(), '今日关闭')] | //button[contains(@class, 'close')] | //button[@aria-label='close']"
-                )
-                logger.info("Found system announcement dialog. Closing it...")
-                close_button.click()
-                time.sleep(1)
+                # Try multiple possible close button selectors
+                close_button = None
+                try:
+                    close_button = self.driver.find_element(By.XPATH, "//button[@aria-label='close']")
+                except:
+                    try:
+                        close_button = self.driver.find_element(By.XPATH, "//button[contains(text(), '关闭公告')]")
+                    except:
+                        try:
+                            close_button = self.driver.find_element(By.XPATH, "//button[contains(text(), '今日关闭')]")
+                        except:
+                            pass
+                
+                if close_button:
+                    logger.info("Found system announcement dialog. Closing it...")
+                    close_button.click()
+                    time.sleep(1)
             except Exception:
                 logger.debug("No system announcement dialog found or already closed")
-                pass
 
-            # Step 2: Click the "登录" button in top right
-            logger.info("Looking for login button in top right...")
+            # Step 2: Directly click "使用 LinuxDO 继续" button (it's on the homepage login section)
+            logger.info("Looking for LinuxDO login button...")
             try:
                 wait = WebDriverWait(self.driver, 15)
-                login_button = wait.until(
-                    EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), '登录')] | //button[contains(text(), '登录')]"))
-                )
-                logger.info("Found login button. Clicking...")
-                login_button.click()
-                time.sleep(3)
-            except TimeoutException:
-                logger.error("Failed to find login button on homepage")
-                return False
-
-            # Step 3: Now on login page, look for LinuxDO login option
-            logger.info("Looking for LinuxDO login option...")
-            try:
-                wait = WebDriverWait(self.driver, 15)
+                # This button is directly on the homepage
                 linuxdo_button = wait.until(
-                    EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'LinuxDO')] | //a[contains(text(), 'LinuxDO')] | //*[contains(text(), 'LinuxDO') and (self::button or self::a)]"))
+                    EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'LinuxDO') or contains(., 'Linux DO')]"))
                 )
                 logger.info("Found LinuxDO login button. Clicking...")
                 linuxdo_button.click()
                 time.sleep(5)  # Wait for redirect to connect.linux.do
             except TimeoutException:
-                # Try broader search
+                # Fallback: try more specific XPath based on the actual structure
                 try:
-                    linuxdo_button = self.driver.find_element(
-                        By.XPATH, "//*[contains(text(), 'Linux') or contains(text(), 'linux')]"
-                    )
-                    self.driver.execute_script("arguments[0].click();", linuxdo_button)
+                    linuxdo_button = self.driver.find_element(By.XPATH, "//*[contains(text(), '使用 LinuxDO 继续')]")
+                    logger.info("Found LinuxDO button via text match. Clicking...")
+                    linuxdo_button.click()
                     time.sleep(5)
                 except Exception:
-                    logger.error("Failed to find LinuxDO login button on login page")
-                    return False
+                    # Last resort: broad search
+                    try:
+                        linuxdo_button = self.driver.find_element(
+                            By.XPATH, "//*[contains(text(), 'Linux') and (self::button or self::a)]"
+                        )
+                        self.driver.execute_script("arguments[0].click();", linuxdo_button)
+                        time.sleep(5)
+                    except Exception:
+                        logger.error("Failed to find LinuxDO login button")
+                        return False
 
             # Step 4: Handle Linux DO OAuth authorization page
             current_url = self.driver.current_url
