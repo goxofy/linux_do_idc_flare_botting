@@ -737,97 +737,67 @@ class DiscourseAutoRead:
         """Perform AnyRouter sign-in using Linux DO SSO"""
         logger.info("Starting AnyRouter sign-in...")
 
-        anyrouter_login_url = "https://anyrouter.top/login"
+        # Direct OAuth endpoint (no need to find button on /login page)
+        anyrouter_oauth_url = "https://anyrouter.top/oauth/linuxdo"
 
         try:
-            # Step 1: Navigate to AnyRouter login page
-            logger.info(f"Navigating to {anyrouter_login_url}...")
-            self.driver.get(anyrouter_login_url)
-            time.sleep(3)
+            # Step 1: Navigate directly to LinuxDO OAuth endpoint
+            logger.info(f"Navigating to {anyrouter_oauth_url}...")
+            self.driver.get(anyrouter_oauth_url)
+            time.sleep(5)  # Wait for redirect to connect.linux.do
 
-            # Step 2: Click "使用 LinuxDO 继续" button
-            try:
-                wait = WebDriverWait(self.driver, 15)
-                login_button = wait.until(
-                    EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'LinuxDO')]"))
-                )
-                logger.info("Found AnyRouter LinuxDO login button. Clicking...")
-                login_button.click()
-                time.sleep(3)
-            except TimeoutException:
-                # Try alternative selectors
-                try:
-                    login_button = self.driver.find_element(
-                        By.XPATH, "//a[contains(text(), 'LinuxDO')]"
-                    )
-                    login_button.click()
-                    time.sleep(3)
-                except Exception:
-                    try:
-                        # Broader search for any clickable element mentioning LinuxDO
-                        login_button = self.driver.find_element(
-                            By.XPATH, "//*[contains(text(), 'LinuxDO') and (self::button or self::a or self::div)]"
-                        )
-                        try:
-                            login_button.click()
-                        except Exception:
-                            self.driver.execute_script("arguments[0].click();", login_button)
-                        time.sleep(3)
-                    except Exception:
-                        logger.error("Failed to find AnyRouter LinuxDO login button")
-                        return False
-
-            # Step 3: Handle Linux DO OAuth authorization page
+            # Step 2: Handle Linux DO OAuth authorization page
             current_url = self.driver.current_url
-            logger.info(f"Current URL after login click: {current_url}")
+            logger.info(f"Current URL after OAuth init: {current_url}")
 
             if "connect.linux.do" in current_url:
-                logger.info("On Linux DO OAuth page. Looking for authorize button...")
+                logger.info("On Linux DO OAuth authorization page. Looking for '允许' button...")
                 try:
-                    wait = WebDriverWait(self.driver, 10)
+                    wait = WebDriverWait(self.driver, 15)
                     authorize_button = wait.until(
-                        EC.element_to_be_clickable((By.XPATH, "/html/body/div[2]/a[1]"))
+                        EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), '允许') or contains(text(), 'Authorize')]"))
                     )
                     logger.info("Found authorize button. Clicking '允许'...")
                     authorize_button.click()
-                    time.sleep(3)
+                    time.sleep(5)
                 except TimeoutException:
+                    # Try alternative selectors for authorize button
                     try:
                         authorize_button = self.driver.find_element(
                             By.XPATH, "//a[contains(text(), '允许')]"
                         )
                         authorize_button.click()
-                        time.sleep(3)
+                        time.sleep(5)
                     except Exception:
-                        logger.warning("Could not find authorize button - may already be authorized")
+                        try:
+                            # Broad search for authorize/allow button
+                            authorize_button = self.driver.find_element(
+                                By.XPATH, "//*[contains(text(), '允许') and (self::button or self::a)]"
+                            )
+                            self.driver.execute_script("arguments[0].click();", authorize_button)
+                            time.sleep(5)
+                        except Exception:
+                            logger.warning("Could not find authorize button - may already be authorized or page structure changed")
             elif "linux.do" in current_url:
-                # May be on linux.do login page or intermediate redirect
                 logger.info(f"On linux.do page: {current_url}. Waiting for redirect...")
                 try:
-                    wait = WebDriverWait(self.driver, 15)
+                    wait = WebDriverWait(self.driver, 20)
                     wait.until(lambda d: "anyrouter.top" in d.current_url or "connect.linux.do" in d.current_url)
-                    time.sleep(2)
-                    # If redirected to connect.linux.do, handle authorization
+                    time.sleep(3)
+                    # Check again if now on authorize page
                     if "connect.linux.do" in self.driver.current_url:
                         try:
                             authorize_button = self.driver.find_element(
-                                By.XPATH, "/html/body/div[2]/a[1]"
+                                By.XPATH, "//button[contains(text(), '允许')]"
                             )
                             authorize_button.click()
-                            time.sleep(3)
+                            time.sleep(5)
                         except Exception:
-                            try:
-                                authorize_button = self.driver.find_element(
-                                    By.XPATH, "//a[contains(text(), '允许')]"
-                                )
-                                authorize_button.click()
-                                time.sleep(3)
-                            except Exception:
-                                logger.warning("Could not find authorize button after linux.do redirect")
+                            logger.warning("Could not find authorize button after redirect")
                 except TimeoutException:
                     logger.warning(f"Timeout waiting for redirect from {current_url}")
 
-            # Step 4: Wait for redirect back to AnyRouter
+            # Step 3: Wait for redirect back to AnyRouter
             logger.info("Waiting for AnyRouter redirect...")
             try:
                 wait = WebDriverWait(self.driver, 20)
