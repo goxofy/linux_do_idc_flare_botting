@@ -890,7 +890,6 @@ class DiscourseAutoRead:
 
             # Step 7: Click '允许' (authorize) button
             logger.info("Looking for '允许' (authorize) button...")
-            sso_window = self.driver.current_window_handle
             try:
                 wait = WebDriverWait(self.driver, 15)
                 authorize_button = wait.until(
@@ -905,69 +904,101 @@ class DiscourseAutoRead:
             except TimeoutException:
                 logger.warning("Could not find '允许' button - may already be authorized")
 
-            # Step 8: Handle tab closure after SSO authorization
-            # The SSO tab may close automatically after clicking '允许',
-            # causing "no such window" if we try to use the closed tab.
-            if sso_window not in self.driver.window_handles:
-                logger.info("SSO tab closed automatically. Switching back to original window...")
-                self.driver.switch_to.window(original_window)
-            else:
-                # SSO tab still open - check if it redirected
-                try:
-                    current_url = self.driver.current_url
-                    logger.info(f"SSO tab still open. URL: {current_url}")
-                except Exception:
-                    logger.info("SSO tab became invalid. Switching to original window...")
-                    self.driver.switch_to.window(original_window)
+            # Step 8: Wait for redirect/result, then scan ALL tabs
+            # After clicking '允许', the result can appear in either:
+            #   - The SSO tab (if it stays open and redirects)
+            #   - The original window (if SSO tab auto-closes)
+            # Error messages like '清除 Cookie' can also appear in either.
+            logger.info("Waiting for OAuth redirect/result across all tabs...")
+            time.sleep(3)
 
-            # Step 9: Wait for redirect to anyrouter.top on whichever tab is active
-            current_url = self.driver.current_url
-            logger.info(f"URL after authorization: {current_url}")
+            # Scan all open windows for success/failure indicators
+            success_handle = None
+            failure_handle = None
+            failure_reason = None
+            anyrouter_handle = None
 
-            if "anyrouter.top" not in current_url:
-                try:
-                    wait = WebDriverWait(self.driver, 20)
-                    wait.until(lambda d: "anyrouter.top" in d.current_url)
-                    current_url = self.driver.current_url
-                    logger.info(f"Redirected to AnyRouter: {current_url}")
-                    time.sleep(3)
-                except TimeoutException:
-                    # Check the other window if redirect didn't happen here
-                    logger.warning(f"No redirect on current tab. URL: {self.driver.current_url}")
-                    for handle in self.driver.window_handles:
-                        if handle != self.driver.current_window_handle:
-                            self.driver.switch_to.window(handle)
-                            current_url = self.driver.current_url
-                            logger.info(f"Checking other tab. URL: {current_url}")
-                            if "anyrouter.top" in current_url:
-                                break
-
-            current_url = self.driver.current_url
-
-            # Close extra tabs and switch back to a single window
             for handle in self.driver.window_handles:
-                if handle != self.driver.current_window_handle:
+                try:
                     self.driver.switch_to.window(handle)
-                    self.driver.close()
-            self.driver.switch_to.window(self.driver.window_handles[0])
+                except Exception:
+                    continue
 
-            # Check for success: redirected to /console/token
-            if "anyrouter.top/console/token" in current_url:
+                try:
+                    tab_url = self.driver.current_url
+                except Exception:
+                    continue
+
+                logger.info(f"Scanning tab {handle[:8]}... URL: {tab_url}")
+
+                # Success: landed on /console/token
+                if "anyrouter.top/console/token" in tab_url:
+                    logger.info(f"  -> SUCCESS: /console/token found")
+                    success_handle = handle
+                    break
+
+                # Check page text for error or success signals
+                try:
+                    page_text = self.driver.find_element(By.TAG_NAME, "body").text
+                except Exception:
+                    page_text = ""
+
+                if "清除 Cookie" in page_text or "错误" in page_text:
+                    logger.warning(f"  -> FAILURE: error message detected in page text")
+                    failure_handle = handle
+                    failure_reason = "error message on page"
+                    continue
+
+                # Failure: redirected back to /login
+                if "anyrouter.top" in tab_url and "/login" in tab_url:
+                    logger.warning(f"  -> FAILURE: redirected to /login")
+                    failure_handle = handle
+                    failure_reason = "redirected to /login"
+                    continue
+
+                # Track any anyrouter.top tab (not /login) as a candidate
+                if "anyrouter.top" in tab_url and "/login" not in tab_url:
+                    anyrouter_handle = handle
+
+            # Close extra tabs and consolidate to a single window
+            def _cleanup_tabs(keep_handle):
+                for h in self.driver.window_handles:
+                    if h != keep_handle:
+                        try:
+                            self.driver.switch_to.window(h)
+                            self.driver.close()
+                        except Exception:
+                            pass
+                try:
+                    self.driver.switch_to.window(keep_handle)
+                except Exception:
+                    self.driver.switch_to.window(self.driver.window_handles[0])
+
+            # Evaluate results in priority order
+            if success_handle:
+                _cleanup_tabs(success_handle)
                 logger.info("AnyRouter sign-in successful! Redirected to /console/token.")
                 return True
 
-            # Check for failure: error message or redirected back to /login
-            page_text = self.driver.find_element(By.TAG_NAME, "body").text
-            if "请尝试清除 Cookie 后重新登录" in page_text or "/login" in self.driver.current_url:
-                logger.warning("AnyRouter sign-in failed: error message detected or redirected to /login.")
+            if failure_handle:
+                _cleanup_tabs(original_window if original_window in self.driver.window_handles
+                              else self.driver.window_handles[0])
+                logger.warning(f"AnyRouter sign-in failed: {failure_reason}.")
                 return False
 
-            # If on anyrouter.top but not on /login, navigate to /console/token to verify
-            if "anyrouter.top" in self.driver.current_url and "login" not in self.driver.current_url:
-                logger.info("On AnyRouter but not on token page. Navigating to /console/token...")
+            # No clear success/failure yet — try the anyrouter tab or original window
+            target = anyrouter_handle or original_window
+            if target not in self.driver.window_handles:
+                target = self.driver.window_handles[0]
+            _cleanup_tabs(target)
+
+            # Verify by navigating to /console/token
+            current_url = self.driver.current_url
+            if "anyrouter.top" in current_url and "/login" not in current_url:
+                logger.info("On AnyRouter but not on token page. Navigating to /console/token to verify...")
                 self.driver.get("https://anyrouter.top/console/token")
                 time.sleep(3)
-                if "login" not in self.driver.current_url:
+                if "/login" not in self.driver.current_url:
                     logger.info("AnyRouter sign-in successful!")
                     return True
                 else:
