@@ -751,22 +751,43 @@ class DiscourseAutoRead:
 
     def _close_anyrouter_announcement(self):
         """Close AnyRouter system announcement dialog if present"""
-        try:
-            wait = WebDriverWait(self.driver, 5)
-            close_button = wait.until(
-                EC.element_to_be_clickable((
-                    By.XPATH,
-                    "//button[contains(text(), '今日关闭') or contains(text(), '关闭公告')]"
-                ))
-            )
-            logger.info("Found system announcement dialog. Closing...")
-            close_button.click()
-            time.sleep(1)
-            logger.info("System announcement dialog closed.")
-        except TimeoutException:
-            logger.info("No system announcement dialog found.")
-        except Exception as e:
-            logger.warning(f"Error closing announcement dialog: {e}")
+        # XPath matches button/a/span/div with common close-dialog text
+        close_xpath = (
+            "//*[self::button or self::a or self::span or self::div]"
+            "[contains(text(), '今日关闭') or contains(text(), '关闭公告') "
+            "or contains(text(), '关闭') or contains(text(), '我知道了') "
+            "or contains(text(), 'OK') or contains(text(), 'Close')]"
+        )
+
+        for attempt in range(3):
+            try:
+                wait = WebDriverWait(self.driver, 10)
+                close_button = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, close_xpath))
+                )
+                logger.info(f"Found announcement dialog close button: "
+                            f"<{close_button.tag_name}> '{close_button.text.strip()}'")
+                self.driver.execute_script("arguments[0].click();", close_button)
+                time.sleep(1)
+                logger.info("System announcement dialog closed.")
+                return
+            except TimeoutException:
+                if attempt < 2:
+                    logger.debug(f"Announcement dialog not found (attempt {attempt + 1}/3), retrying...")
+                    time.sleep(2)
+                    continue
+                # Final attempt failed - log page state for debugging and try ESC
+                logger.info("No announcement dialog found after 3 attempts.")
+                try:
+                    from selenium.webdriver.common.keys import Keys
+                    self.driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+                    logger.info("Sent ESC key as fallback to dismiss any overlay.")
+                    time.sleep(1)
+                except Exception:
+                    pass
+            except Exception as e:
+                logger.warning(f"Error closing announcement dialog: {e}")
+                return
 
     def _clear_anyrouter_cookies(self):
         """Clear only anyrouter.top cookies (preserve linux.do cookies)"""
