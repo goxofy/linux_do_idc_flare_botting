@@ -50,6 +50,14 @@ class DiscourseAutoRead:
             options.add_argument('--start-maximized')
             options.add_argument('--lang=zh-CN,zh,en-US,en')
             
+            # Use Chrome installed by workflow if available
+            chrome_path = "/opt/hostedtoolcache/setup-chrome/chromium/143.0.7499.192/x64/chrome"
+            if os.path.exists(chrome_path):
+                options.binary_location = chrome_path
+                logger.info(f"Using Chrome from: {chrome_path}")
+            else:
+                logger.info("Chrome 143 not found at expected path, using system Chrome")
+            
             logger.info("Launching undetected Chrome (v143)...")
             self.driver = uc.Chrome(
                 options=options,
@@ -102,7 +110,15 @@ class DiscourseAutoRead:
             options.add_argument('--disable-popup-blocking')
             options.add_argument('--start-maximized')
             options.add_argument('--lang=zh-CN,zh,en-US,en')
-            
+
+            # Use Chrome installed by workflow if available
+            chrome_path = "/opt/hostedtoolcache/setup-chrome/chromium/143.0.7499.192/x64/chrome"
+            if os.path.exists(chrome_path):
+                options.binary_location = chrome_path
+                logger.info(f"Using Chrome from: {chrome_path}")
+            else:
+                logger.info("Chrome 143 not found at expected path, using system Chrome")
+
             logger.info("Launching undetected Chrome (v143)...")
             self.driver = uc.Chrome(
                 options=options,
@@ -110,10 +126,10 @@ class DiscourseAutoRead:
                 version_main=143
             )
             self.driver.set_page_load_timeout(60)
-            
+
             user_agent = self.driver.execute_script("return navigator.userAgent")
             logger.info(f"User-Agent: {user_agent}")
-            
+
             # Perform login
             if self.username and self.password:
                 self.login_with_credentials()
