@@ -749,179 +749,191 @@ class DiscourseAutoRead:
             logger.error(f"TuneHub check-in failed: {e}")
             return False
 
+    def _close_anyrouter_announcement(self):
+        """Close AnyRouter system announcement dialog if present"""
+        try:
+            wait = WebDriverWait(self.driver, 5)
+            close_button = wait.until(
+                EC.element_to_be_clickable((
+                    By.XPATH,
+                    "//button[contains(text(), '今日关闭') or contains(text(), '关闭公告')]"
+                ))
+            )
+            logger.info("Found system announcement dialog. Closing...")
+            close_button.click()
+            time.sleep(1)
+            logger.info("System announcement dialog closed.")
+        except TimeoutException:
+            logger.info("No system announcement dialog found.")
+        except Exception as e:
+            logger.warning(f"Error closing announcement dialog: {e}")
+
+    def _clear_anyrouter_cookies(self):
+        """Clear only anyrouter.top cookies (preserve linux.do cookies)"""
+        logger.info("Clearing anyrouter.top cookies...")
+        try:
+            all_cookies = self.driver.get_cookies()
+            removed = 0
+            for cookie in all_cookies:
+                domain = cookie.get('domain', '')
+                if 'anyrouter' in domain:
+                    self.driver.delete_cookie(cookie['name'])
+                    removed += 1
+            logger.info(f"Cleared {removed} anyrouter.top cookies (linux.do cookies preserved).")
+        except Exception as e:
+            logger.warning(f"Error clearing anyrouter cookies: {e}")
+
     def anyrouter_checkin(self):
-        """Perform AnyRouter sign-in using Linux DO SSO"""
+        """Perform AnyRouter sign-in using Linux DO SSO with retry logic"""
         logger.info("Starting AnyRouter sign-in...")
 
-        anyrouter_home_url = "https://anyrouter.top/"
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            logger.info(f"AnyRouter sign-in attempt {attempt}/{max_retries}")
+            result = self._anyrouter_checkin_attempt()
+            if result:
+                logger.info("AnyRouter sign-in completed successfully!")
+                return True
 
+            if attempt < max_retries:
+                logger.warning(f"AnyRouter sign-in attempt {attempt} failed. Clearing cookies and retrying...")
+                self._clear_anyrouter_cookies()
+                time.sleep(2)
+
+        logger.error(f"AnyRouter sign-in failed after {max_retries} attempts.")
+        return False
+
+    def _anyrouter_checkin_attempt(self):
+        """Single attempt of AnyRouter sign-in flow. Returns True on success, False on failure."""
         try:
-            # Step 1: Navigate to AnyRouter homepage (which directly shows login options)
-            logger.info(f"Navigating to {anyrouter_home_url}...")
-            self.driver.get(anyrouter_home_url)
+            # Remember the original window handle
+            original_window = self.driver.current_window_handle
+
+            # Step 1: Navigate to AnyRouter login page
+            login_url = "https://anyrouter.top/login"
+            logger.info(f"Navigating to {login_url}...")
+            self.driver.get(login_url)
             time.sleep(3)
 
-            # Step 1.5: Close the system announcement dialog if present
-            try:
-                # Try multiple possible close button selectors
-                close_button = None
-                try:
-                    close_button = self.driver.find_element(By.XPATH, "//button[@aria-label='close']")
-                except:
-                    try:
-                        close_button = self.driver.find_element(By.XPATH, "//button[contains(text(), '关闭公告')]")
-                    except:
-                        try:
-                            close_button = self.driver.find_element(By.XPATH, "//button[contains(text(), '今日关闭')]")
-                        except:
-                            pass
-                
-                if close_button:
-                    logger.info("Found system announcement dialog. Closing it...")
-                    close_button.click()
-                    time.sleep(1)
-            except Exception:
-                logger.debug("No system announcement dialog found or already closed")
+            # Step 2: Close system announcement dialog
+            self._close_anyrouter_announcement()
 
-            # Step 2: Directly click "使用 LinuxDO 继续" button (it's on the homepage login section)
-            logger.info("Looking for LinuxDO login button...")
+            # Step 3: Refresh the page
+            logger.info("Refreshing page...")
+            self.driver.refresh()
+            time.sleep(3)
+
+            # Step 4: Close system announcement dialog again (reappears after refresh)
+            self._close_anyrouter_announcement()
+
+            # Step 5: Find and click '使用 LinuxDO 继续' button (opens new tab)
+            logger.info("Looking for '使用 LinuxDO 继续' button...")
             try:
                 wait = WebDriverWait(self.driver, 15)
-                # This button is directly on the homepage
                 linuxdo_button = wait.until(
-                    EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'LinuxDO') or contains(., 'Linux DO')]"))
+                    EC.element_to_be_clickable((
+                        By.XPATH,
+                        "//button[contains(., 'LinuxDO') or contains(., 'Linux DO')]"
+                    ))
                 )
-                logger.info("Found LinuxDO login button. Clicking...")
+                logger.info("Found '使用 LinuxDO 继续' button. Clicking...")
                 linuxdo_button.click()
-                time.sleep(5)  # Wait for redirect to connect.linux.do
+                time.sleep(3)
             except TimeoutException:
-                # Fallback: try more specific XPath based on the actual structure
                 try:
-                    linuxdo_button = self.driver.find_element(By.XPATH, "//*[contains(text(), '使用 LinuxDO 继续')]")
-                    logger.info("Found LinuxDO button via text match. Clicking...")
-                    linuxdo_button.click()
-                    time.sleep(5)
-                except Exception:
-                    # Last resort: broad search
-                    try:
-                        linuxdo_button = self.driver.find_element(
-                            By.XPATH, "//*[contains(text(), 'Linux') and (self::button or self::a)]"
-                        )
-                        self.driver.execute_script("arguments[0].click();", linuxdo_button)
-                        time.sleep(5)
-                    except Exception:
-                        logger.error("Failed to find LinuxDO login button")
-                        return False
-
-            # Step 4: Handle Linux DO OAuth authorization page
-            current_url = self.driver.current_url
-            logger.info(f"Current URL after clicking LinuxDO: {current_url}")
-
-            if "connect.linux.do" in current_url:
-                logger.info("On Linux DO OAuth authorization page. Looking for '允许' button...")
-                try:
-                    wait = WebDriverWait(self.driver, 15)
-                    authorize_button = wait.until(
-                        EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), '允许') or contains(text(), 'Authorize')]"))
+                    linuxdo_button = self.driver.find_element(
+                        By.XPATH, "//*[contains(text(), '使用 LinuxDO 继续')]"
                     )
-                    logger.info("Found authorize button. Clicking '允许'...")
-                    authorize_button.click()
-                    time.sleep(5)
-                except TimeoutException:
-                    # Try alternative selectors for authorize button
-                    try:
-                        authorize_button = self.driver.find_element(
-                            By.XPATH, "//a[contains(text(), '允许')]"
-                        )
-                        authorize_button.click()
-                        time.sleep(5)
-                    except Exception:
-                        try:
-                            # Broad search for authorize/allow button
-                            authorize_button = self.driver.find_element(
-                                By.XPATH, "//*[contains(text(), '允许') and (self::button or self::a)]"
-                            )
-                            self.driver.execute_script("arguments[0].click();", authorize_button)
-                            time.sleep(5)
-                        except Exception:
-                            logger.warning("Could not find authorize button - may already be authorized or page structure changed")
-            elif "linux.do" in current_url:
-                logger.info(f"On linux.do page: {current_url}. Waiting for redirect...")
-                try:
-                    wait = WebDriverWait(self.driver, 20)
-                    wait.until(lambda d: "anyrouter.top" in d.current_url or "connect.linux.do" in d.current_url)
+                    logger.info("Found LinuxDO button via text match. Clicking...")
+                    self.driver.execute_script("arguments[0].click();", linuxdo_button)
                     time.sleep(3)
-                    # Check again if now on authorize page
-                    if "connect.linux.do" in self.driver.current_url:
-                        try:
-                            authorize_button = self.driver.find_element(
-                                By.XPATH, "//button[contains(text(), '允许')]"
-                            )
-                            authorize_button.click()
-                            time.sleep(5)
-                        except Exception:
-                            logger.warning("Could not find authorize button after redirect")
-                except TimeoutException:
-                    logger.warning(f"Timeout waiting for redirect from {current_url}")
+                except Exception:
+                    logger.error("Failed to find '使用 LinuxDO 继续' button")
+                    return False
 
-            # Step 5: Wait for redirect back to AnyRouter
-            logger.info("Waiting for AnyRouter redirect...")
+            # Step 6: Switch to the new tab (connect.linux.do/oauth2/authorize)
+            logger.info("Waiting for new tab to open...")
+            try:
+                wait = WebDriverWait(self.driver, 10)
+                wait.until(lambda d: len(d.window_handles) > 1)
+                new_window = [w for w in self.driver.window_handles if w != original_window][0]
+                self.driver.switch_to.window(new_window)
+                logger.info(f"Switched to new tab. URL: {self.driver.current_url}")
+                time.sleep(2)
+            except TimeoutException:
+                # No new tab opened - might have navigated in same tab
+                logger.info(f"No new tab detected. Current URL: {self.driver.current_url}")
+                if "connect.linux.do" not in self.driver.current_url:
+                    logger.error("Not on OAuth authorization page and no new tab opened")
+                    return False
+
+            # Step 7: Click '允许' (authorize) button
+            logger.info("Looking for '允许' (authorize) button...")
+            try:
+                wait = WebDriverWait(self.driver, 15)
+                authorize_button = wait.until(
+                    EC.element_to_be_clickable((
+                        By.XPATH,
+                        "//*[contains(text(), '允许') and (self::button or self::a)]"
+                    ))
+                )
+                logger.info("Found '允许' button. Clicking...")
+                authorize_button.click()
+                time.sleep(5)
+            except TimeoutException:
+                logger.warning("Could not find '允许' button - may already be authorized")
+
+            # Step 8: Handle outcomes - check which tab has the result
+            # After authorization, the new tab may redirect to anyrouter.top
+            current_url = self.driver.current_url
+            logger.info(f"URL after authorization: {current_url}")
+
+            # Wait for redirect to anyrouter.top in current tab
             try:
                 wait = WebDriverWait(self.driver, 20)
                 wait.until(lambda d: "anyrouter.top" in d.current_url)
-                logger.info(f"Redirected to AnyRouter: {self.driver.current_url}")
+                current_url = self.driver.current_url
+                logger.info(f"Redirected to AnyRouter: {current_url}")
                 time.sleep(3)
             except TimeoutException:
-                if "anyrouter.top" not in self.driver.current_url:
-                    logger.error(f"Failed to redirect to AnyRouter. Current URL: {self.driver.current_url}")
-                    return False
+                logger.warning(f"Timeout waiting for AnyRouter redirect. Current URL: {self.driver.current_url}")
 
-            # Step 5: Navigate to token page to finalize sign-in
-            token_url = "https://anyrouter.top/console/token"
-            logger.info(f"Navigating to {token_url}...")
-            self.driver.get(token_url)
-            time.sleep(5)
-
-            # Step 6: Verify sign-in success (toast preferred)
+            # Close extra tabs and switch back to a single window
             current_url = self.driver.current_url
-            logger.info(f"Final URL: {current_url}")
+            for handle in self.driver.window_handles:
+                if handle != self.driver.current_window_handle:
+                    self.driver.switch_to.window(handle)
+                    self.driver.close()
+            self.driver.switch_to.window(self.driver.window_handles[0])
 
-            toast_detected = False
-            toast_text = ""
-
-            # Prefer checking for a toast notification (more reliable than URL alone)
-            try:
-                wait = WebDriverWait(self.driver, 10)
-                toast_el = wait.until(
-                    EC.visibility_of_element_located(
-                        (
-                            By.XPATH,
-                            "//*[(@role='alert' or contains(@class,'toast') or contains(@class,'Toast') or contains(@class,'notification') or contains(@class,'Notification')) and string-length(normalize-space(.))>0]"
-                        )
-                    )
-                )
-                toast_text = toast_el.text.strip()
-                toast_detected = True
-                logger.info(f"AnyRouter toast detected: {toast_text}")
-            except Exception:
-                pass
-
-            # Fallback: URL-based check
-            if "anyrouter.top" in current_url and "login" not in current_url:
-                if toast_detected:
-                    logger.info("AnyRouter sign-in successful! (toast confirmed)")
-                else:
-                    logger.info("AnyRouter sign-in likely successful! (no toast captured)")
+            # Check for success: redirected to /console/token
+            if "anyrouter.top/console/token" in current_url:
+                logger.info("AnyRouter sign-in successful! Redirected to /console/token.")
                 return True
 
-            logger.warning(
-                f"AnyRouter sign-in may have failed. Current URL: {current_url}"
-                + (f" | toast={toast_text}" if toast_text else "")
-            )
+            # Check for failure: error message or redirected back to /login
+            page_text = self.driver.find_element(By.TAG_NAME, "body").text
+            if "请尝试清除 Cookie 后重新登录" in page_text or "/login" in self.driver.current_url:
+                logger.warning("AnyRouter sign-in failed: error message detected or redirected to /login.")
+                return False
+
+            # If on anyrouter.top but not on /login, navigate to /console/token to verify
+            if "anyrouter.top" in self.driver.current_url and "login" not in self.driver.current_url:
+                logger.info("On AnyRouter but not on token page. Navigating to /console/token...")
+                self.driver.get("https://anyrouter.top/console/token")
+                time.sleep(3)
+                if "login" not in self.driver.current_url:
+                    logger.info("AnyRouter sign-in successful!")
+                    return True
+                else:
+                    logger.warning("Redirected back to login page.")
+                    return False
+
+            logger.warning(f"AnyRouter sign-in unclear. Current URL: {self.driver.current_url}")
             return False
 
         except Exception as e:
-            logger.error(f"AnyRouter sign-in failed: {e}")
+            logger.error(f"AnyRouter sign-in attempt failed: {e}")
             return False
 
 def main():
