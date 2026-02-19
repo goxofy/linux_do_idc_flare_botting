@@ -836,8 +836,8 @@ class DiscourseAutoRead:
                         "//button[contains(., 'LinuxDO') or contains(., 'Linux DO')]"
                     ))
                 )
-                logger.info("Found '使用 LinuxDO 继续' button. Clicking...")
-                linuxdo_button.click()
+                logger.info("Found '使用 LinuxDO 继续' button. Clicking via JS...")
+                self.driver.execute_script("arguments[0].click();", linuxdo_button)
                 time.sleep(3)
             except TimeoutException:
                 try:
