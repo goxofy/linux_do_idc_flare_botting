@@ -890,6 +890,7 @@ class DiscourseAutoRead:
 
             # Step 7: Click '允许' (authorize) button
             logger.info("Looking for '允许' (authorize) button...")
+            sso_window = self.driver.current_window_handle
             try:
                 wait = WebDriverWait(self.driver, 15)
                 authorize_button = wait.until(
@@ -900,27 +901,50 @@ class DiscourseAutoRead:
                 )
                 logger.info("Found '允许' button. Clicking...")
                 authorize_button.click()
-                time.sleep(5)
+                time.sleep(3)
             except TimeoutException:
                 logger.warning("Could not find '允许' button - may already be authorized")
 
-            # Step 8: Handle outcomes - check which tab has the result
-            # After authorization, the new tab may redirect to anyrouter.top
+            # Step 8: Handle tab closure after SSO authorization
+            # The SSO tab may close automatically after clicking '允许',
+            # causing "no such window" if we try to use the closed tab.
+            if sso_window not in self.driver.window_handles:
+                logger.info("SSO tab closed automatically. Switching back to original window...")
+                self.driver.switch_to.window(original_window)
+            else:
+                # SSO tab still open - check if it redirected
+                try:
+                    current_url = self.driver.current_url
+                    logger.info(f"SSO tab still open. URL: {current_url}")
+                except Exception:
+                    logger.info("SSO tab became invalid. Switching to original window...")
+                    self.driver.switch_to.window(original_window)
+
+            # Step 9: Wait for redirect to anyrouter.top on whichever tab is active
             current_url = self.driver.current_url
             logger.info(f"URL after authorization: {current_url}")
 
-            # Wait for redirect to anyrouter.top in current tab
-            try:
-                wait = WebDriverWait(self.driver, 20)
-                wait.until(lambda d: "anyrouter.top" in d.current_url)
-                current_url = self.driver.current_url
-                logger.info(f"Redirected to AnyRouter: {current_url}")
-                time.sleep(3)
-            except TimeoutException:
-                logger.warning(f"Timeout waiting for AnyRouter redirect. Current URL: {self.driver.current_url}")
+            if "anyrouter.top" not in current_url:
+                try:
+                    wait = WebDriverWait(self.driver, 20)
+                    wait.until(lambda d: "anyrouter.top" in d.current_url)
+                    current_url = self.driver.current_url
+                    logger.info(f"Redirected to AnyRouter: {current_url}")
+                    time.sleep(3)
+                except TimeoutException:
+                    # Check the other window if redirect didn't happen here
+                    logger.warning(f"No redirect on current tab. URL: {self.driver.current_url}")
+                    for handle in self.driver.window_handles:
+                        if handle != self.driver.current_window_handle:
+                            self.driver.switch_to.window(handle)
+                            current_url = self.driver.current_url
+                            logger.info(f"Checking other tab. URL: {current_url}")
+                            if "anyrouter.top" in current_url:
+                                break
+
+            current_url = self.driver.current_url
 
             # Close extra tabs and switch back to a single window
-            current_url = self.driver.current_url
             for handle in self.driver.window_handles:
                 if handle != self.driver.current_window_handle:
                     self.driver.switch_to.window(handle)
