@@ -966,6 +966,270 @@ class DiscourseAutoRead:
             logger.error(f"AnyRouter sign-in attempt failed: {e}")
             return False
 
+    def qaqal_checkin(self):
+        """Perform sign.qaq.al daily check-in using Linux DO SSO"""
+        logger.info("Starting sign.qaq.al check-in...")
+
+        try:
+            # Remember the original window handle
+            original_window = self.driver.current_window_handle
+
+            # Step 1: Navigate to sign.qaq.al
+            logger.info("Navigating to https://sign.qaq.al ...")
+            self.driver.get("https://sign.qaq.al")
+            time.sleep(3)
+
+            # Step 2: Click '使用 Linux DO 登录' button
+            logger.info("Looking for '使用 Linux DO 登录' button...")
+            logger.info(f"Current URL before click: {self.driver.current_url}")
+            try:
+                # Try to find the login link by href first
+                wait = WebDriverWait(self.driver, 15)
+                login_button = wait.until(
+                    EC.element_to_be_clickable((
+                        By.XPATH,
+                        "//a[@href='/auth/login']"
+                    ))
+                )
+                logger.info("Found login link by href. Clicking...")
+                self.driver.execute_script("arguments[0].click();", login_button)
+                time.sleep(3)
+            except TimeoutException:
+                try:
+                    # Fallback: find by text content
+                    login_button = self.driver.find_element(
+                        By.XPATH, "//*[contains(text(), '使用 LinuxDO 登录')]"
+                    )
+                    logger.info("Found login button via text match. Clicking...")
+                    self.driver.execute_script("arguments[0].click();", login_button)
+                    time.sleep(3)
+                except Exception as e:
+                    logger.error(f"Failed to find '使用 Linux DO 登录' button: {e}")
+                    # Debug: print current page content
+                    try:
+                        body_text = self.driver.find_element(By.TAG_NAME, "body").text
+                        logger.error(f"Current page content: {body_text[:500]}")
+                    except:
+                        pass
+                    return False
+
+            # Step 3: Handle SSO authorization (may open new tab)
+            logger.info("Checking for SSO authorization page...")
+            time.sleep(2)
+
+            # Check if a new tab opened
+            if len(self.driver.window_handles) > 1:
+                new_window = [w for w in self.driver.window_handles if w != original_window][0]
+                self.driver.switch_to.window(new_window)
+                logger.info(f"Switched to new tab. URL: {self.driver.current_url}")
+
+            if "connect.linux.do" in self.driver.current_url:
+                logger.info("On Linux DO OAuth page. Looking for '允许' button...")
+                try:
+                    wait = WebDriverWait(self.driver, 15)
+                    authorize_button = wait.until(
+                        EC.element_to_be_clickable((
+                            By.XPATH,
+                            "//*[contains(text(), '允许') and (self::button or self::a)]"
+                        ))
+                    )
+                    logger.info("Found '允许' button. Clicking...")
+                    authorize_button.click()
+                    time.sleep(3)
+                except TimeoutException:
+                    logger.warning("Could not find '允许' button - may already be authorized")
+
+            # Step 4: Wait for redirect to /app page
+            logger.info("Waiting for redirect to /app page...")
+            try:
+                wait = WebDriverWait(self.driver, 20)
+                wait.until(lambda d: any(
+                    "sign.qaq.al/app" in d.current_url
+                    or "sign.qaq.al" in d.current_url and "/app" in d.current_url
+                    for _ in [None]
+                ))
+            except TimeoutException:
+                # Scan all tabs for the /app page
+                for handle in self.driver.window_handles:
+                    try:
+                        self.driver.switch_to.window(handle)
+                        if "sign.qaq.al" in self.driver.current_url:
+                            break
+                    except Exception:
+                        continue
+
+            # Clean up extra tabs
+            current_handle = self.driver.current_window_handle
+            self._cleanup_tabs(current_handle)
+
+            logger.info(f"Current URL: {self.driver.current_url}")
+
+            # Step 5: Wait for page to fully load
+            logger.info("Waiting 8 seconds for page to load...")
+            time.sleep(8)
+
+            # Debug: print current URL and full page content
+            logger.info(f"Current URL after wait: {self.driver.current_url}")
+            try:
+                page_text = self.driver.find_element(By.TAG_NAME, "body").text
+                logger.info(f"Full page text (first 800 chars): {page_text[:800]}")
+            except Exception as e:
+                logger.error(f"Failed to get page text: {e}")
+                page_text = ""
+
+            # Check page text for check-in status
+            logger.info(f"Page text preview: {page_text[:200]}...")
+
+            # Try to get status from specific element first
+            try:
+                status_badge = self.driver.find_element(By.ID, "signinBadge")
+                status_text = status_badge.text
+                logger.info(f"Status badge text: {status_text}")
+                
+                if "今日已签到" in status_text:
+                    logger.info("Already checked in today (今日已签到). Skipping.")
+                    return True
+                elif "今日未签到" in status_text:
+                    logger.info("Need to check in today (今日未签到).")
+                else:
+                    logger.warning(f"Unexpected status badge text: {status_text}")
+            except Exception as e:
+                logger.debug(f"Could not find status badge element: {e}")
+                # Fallback to page text check
+                if "今日已签到" in page_text:
+                    logger.info("Already checked in today (今日已签到). Skipping.")
+                    return True
+
+            if "今日未签到" not in page_text:
+                logger.warning(f"Unexpected page state. Page text: {page_text[:300]}")
+                # Continue anyway in case the text is rendered differently
+
+            # Step 6: Click '极限' difficulty option (4th option, data-tier-id="4")
+            logger.info("Looking for '极限' difficulty option (data-tier-id='4')...")
+            try:
+                # Use data-tier-id attribute for reliable selection
+                wait = WebDriverWait(self.driver, 10)
+                extreme_option = wait.until(
+                    EC.element_to_be_clickable((
+                        By.CSS_SELECTOR,
+                        'div[data-tier-id="4"]'
+                    ))
+                )
+                logger.info("Found '极限' option by data-tier-id. Clicking...")
+                self.driver.execute_script("arguments[0].click();", extreme_option)
+                time.sleep(1)
+            except TimeoutException:
+                try:
+                    # Fallback: find by h3 text '极限'
+                    logger.info("Trying to find difficulty option by h3 text...")
+                    extreme_option = self.driver.find_element(
+                        By.XPATH, "//h3[contains(text(), '极限')]/parent::div[contains(@class, 'card')]"
+                    )
+                    logger.info("Found difficulty option by h3 text. Clicking...")
+                    self.driver.execute_script("arguments[0].click();", extreme_option)
+                    time.sleep(1)
+                except Exception as e:
+                    logger.error(f"Failed to find '极限' difficulty option: {e}")
+                    # Debug: print all difficulty cards
+                    try:
+                        cards = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-tier-id]')
+                        logger.error(f"Available difficulty cards: {[c.get_attribute('data-tier-id') + ':' + c.text[:30] for c in cards]}")
+                    except:
+                        pass
+                    return False
+
+            # Step 7: Click '开始计算' button (id="startPowBtn")
+            logger.info("Looking for '开始计算' button (id=startPowBtn)...")
+            try:
+                wait = WebDriverWait(self.driver, 10)
+                start_button = wait.until(
+                    EC.element_to_be_clickable((
+                        By.ID,
+                        "startPowBtn"
+                    ))
+                )
+                logger.info("Found '开始计算' button by ID. Clicking...")
+                self.driver.execute_script("arguments[0].click();", start_button)
+                time.sleep(2)
+            except TimeoutException:
+                logger.error("Failed to find '开始计算' button by ID, trying XPath...")
+                try:
+                    start_button = self.driver.find_element(
+                        By.XPATH, "//button[contains(text(), '开始计算')]"
+                    )
+                    self.driver.execute_script("arguments[0].click();", start_button)
+                    time.sleep(2)
+                except Exception as e:
+                    logger.error(f"Failed to find '开始计算' button: {e}")
+                    return False
+
+            # Step 8: Wait for calculation to complete (up to 5 minutes)
+            # The '提交签到' button (id="submitPowBtn") should change from disabled to enabled
+            logger.info("Waiting for calculation to complete (max 5 minutes)...")
+            max_wait = 300  # 5 minutes
+            poll_interval = 3
+            elapsed = 0
+            submit_button = None
+
+            while elapsed < max_wait:
+                try:
+                    # Find submit button by ID
+                    submit_button = self.driver.find_element(By.ID, "submitPowBtn")
+                    
+                    # Check if disabled attribute is present or button is not enabled
+                    disabled_attr = submit_button.get_attribute("disabled")
+                    is_enabled = submit_button.is_enabled()
+                    
+                    if not disabled_attr and is_enabled:
+                        logger.info(f"'提交签到' button is now enabled! (after ~{elapsed}s)")
+                        break
+                    else:
+                        if elapsed % 30 == 0 and elapsed > 0:
+                            logger.info(f"Still calculating... ({elapsed}/{max_wait}s)")
+                        
+                except Exception as e:
+                    if elapsed % 30 == 0:
+                        logger.debug(f"Error checking button state: {e}")
+
+                time.sleep(poll_interval)
+                elapsed += poll_interval
+            else:
+                logger.error(f"Calculation timed out after {max_wait}s")
+                return False
+
+            # Step 9: Click '提交签到' button (id="submitPowBtn")
+            logger.info("Clicking '提交签到' button...")
+            try:
+                # Use the button we found in the previous step, or find it by ID
+                if not submit_button:
+                    submit_button = self.driver.find_element(By.ID, "submitPowBtn")
+
+                self.driver.execute_script("arguments[0].click();", submit_button)
+                logger.info("'提交签到' button clicked!")
+            except Exception as e:
+                logger.error(f"Failed to click '提交签到' button: {e}")
+                return False
+
+            # Step 10: Wait and check for result
+            logger.info("Waiting for check-in result...")
+            time.sleep(2)
+
+            page_text = self.driver.find_element(By.TAG_NAME, "body").text
+            logger.info(f"Post-submit page text preview: {page_text[:300]}...")
+
+            # Check for success indicators
+            success_keywords = ["签到成功", "今日已签到", "获得", "余额"]
+            for keyword in success_keywords:
+                if keyword in page_text:
+                    logger.info(f"Check-in success indicator found: '{keyword}'")
+
+            logger.info("sign.qaq.al check-in completed successfully!")
+            return True
+
+        except Exception as e:
+            logger.error(f"sign.qaq.al check-in failed: {e}")
+            return False
+
 def main():
     configs = []
     
@@ -1025,6 +1289,14 @@ def main():
                     bot.anyrouter_checkin()
                 except Exception as e:
                     logger.error(f"AnyRouter sign-in error: {e}")
+
+                # Perform sign.qaq.al check-in using the same session
+                try:
+                    logger.info("=" * 50)
+                    logger.info("Proceeding to sign.qaq.al check-in using Linux DO session...")
+                    bot.qaqal_checkin()
+                except Exception as e:
+                    logger.error(f"sign.qaq.al check-in error: {e}")
                 finally:
                     if bot.driver:
                         bot.driver.quit()
