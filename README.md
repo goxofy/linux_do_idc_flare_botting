@@ -88,14 +88,7 @@ schedule:
 
 ## AnyRouter 自动签到
 
-当 `TARGET_URL` 或 `TARGET_URL_2` 包含 `linux.do` 时，程序会在 TuneHub 签到完成后自动进行 AnyRouter 签到。AnyRouter 同样使用 Linux DO SSO 进行登录授权。
-
-签到流程：
-1. 访问 AnyRouter 并检测登录状态
-2. 自动处理系统公告弹窗
-3. 刷新页面确认登录状态
-4. 如未登录，通过 Linux DO OAuth 完成授权
-5. 登录失败时自动清除 Cookie 并重试
+当 `TARGET_URL` 或 `TARGET_URL_2` 包含 `linux.do` 时，程序会在 TuneHub 签到完成后自动进行 AnyRouter 签到。
 
 **无需额外配置**，只要你的 `TARGET_URL` 是 `https://linux.do`，签到功能就会自动启用。
 
