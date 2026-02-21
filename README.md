@@ -13,7 +13,7 @@
 - ✅ 可选录屏功能
 - ✅ **TuneHub 自动签到**
 - ✅ **AnyRouter 自动签到**
-- ✅ **GGBOOM 自动签到**（sign.qaq.al，含 PoW 计算）
+- ✅ **GGBOOM 自动签到**
 
 ## 快速开始
 
