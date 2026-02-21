@@ -97,12 +97,6 @@ schedule:
 
 当 `TARGET_URL` 或 `TARGET_URL_2` 包含 `linux.do` 时，程序会在 AnyRouter 签到完成后自动进行 GGBOOM（sign.qaq.al）签到。
 
-**签到流程：**
-1. 使用 Linux DO SSO 登录
-2. 选择"极限"难度（余额范围 15.00 - 20.00）
-3. 自动进行 PoW 计算（约 1-5 分钟）
-4. 计算完成后自动提交签到
-
 **无需额外配置**，只要你的 `TARGET_URL` 是 `https://linux.do`，签到功能就会自动启用。
 
 ## License
