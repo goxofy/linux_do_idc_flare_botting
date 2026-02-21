@@ -50,6 +50,9 @@
 | `MAX_TOPICS` | `10` | 每次阅读的未读帖子数量 |
 | `MAX_NEW_TOPICS` | `20` | 每次阅读的新话题数量 |
 | `ENABLE_RECORDING` | `false` | 是否录制视频（`true`/`false`） |
+| `ENABLE_TUNEHUB_CHECKIN` | `false` | 启用 TuneHub 自动签到（`true`/`false`） |
+| `ENABLE_ANYROUTER_CHECKIN` | `false` | 启用 AnyRouter 自动签到（`true`/`false`） |
+| `ENABLE_GGBOOM_CHECKIN` | `false` | 启用 GGBOOM 自动签到（`true`/`false`） |
 
 ### 4. 启用 Actions
 

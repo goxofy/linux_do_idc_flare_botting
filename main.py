@@ -1270,30 +1270,37 @@ def main():
                     logger.error(f"LinuxDO forum browsing error: {e}")
                     logger.info("Continuing to check-in flow despite forum error...")
                 
+                # Check if check-ins are enabled (default: disabled)
+                enable_tunehub = os.getenv('ENABLE_TUNEHUB_CHECKIN', '').lower() in ('true', 'yes', '1')
+                enable_anyrouter = os.getenv('ENABLE_ANYROUTER_CHECKIN', '').lower() in ('true', 'yes', '1')
+                enable_ggboom = os.getenv('ENABLE_GGBOOM_CHECKIN', '').lower() in ('true', 'yes', '1')
+
                 # Immediately perform TuneHub check-in while session is active
-                # This runs even if start_without_quit() failed, as we might already be logged in
-                try:
-                    logger.info("=" * 50)
-                    logger.info("Proceeding to TuneHub check-in using Linux DO session...")
-                    bot.tunehub_checkin()
-                except Exception as e:
-                    logger.error(f"TuneHub check-in error: {e}")
+                if enable_tunehub:
+                    try:
+                        logger.info("=" * 50)
+                        logger.info("Proceeding to TuneHub check-in using Linux DO session...")
+                        bot.tunehub_checkin()
+                    except Exception as e:
+                        logger.error(f"TuneHub check-in error: {e}")
 
                 # Immediately perform AnyRouter sign-in using the same session
-                try:
-                    logger.info("=" * 50)
-                    logger.info("Proceeding to AnyRouter sign-in using Linux DO session...")
-                    bot.anyrouter_checkin()
-                except Exception as e:
-                    logger.error(f"AnyRouter sign-in error: {e}")
+                if enable_anyrouter:
+                    try:
+                        logger.info("=" * 50)
+                        logger.info("Proceeding to AnyRouter sign-in using Linux DO session...")
+                        bot.anyrouter_checkin()
+                    except Exception as e:
+                        logger.error(f"AnyRouter sign-in error: {e}")
 
                 # Perform sign.qaq.al check-in using the same session
-                try:
-                    logger.info("=" * 50)
-                    logger.info("Proceeding to sign.qaq.al check-in using Linux DO session...")
-                    bot.qaqal_checkin()
-                except Exception as e:
-                    logger.error(f"sign.qaq.al check-in error: {e}")
+                if enable_ggboom:
+                    try:
+                        logger.info("=" * 50)
+                        logger.info("Proceeding to sign.qaq.al check-in using Linux DO session...")
+                        bot.qaqal_checkin()
+                    except Exception as e:
+                        logger.error(f"sign.qaq.al check-in error: {e}")
                 finally:
                     if bot.driver:
                         bot.driver.quit()
