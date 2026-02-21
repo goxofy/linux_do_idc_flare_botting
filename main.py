@@ -6,9 +6,13 @@ from dotenv import load_dotenv
 
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+
+# Chrome/Chromium version used by undetected-chromedriver
+CHROME_VERSION = 143
 
 # Load environment variables
 load_dotenv()
@@ -29,60 +33,62 @@ class DiscourseAutoRead:
         self.cookie_str = cookie_str
         self.driver = None
 
+    def _setup_driver(self):
+        """Create and configure the undetected Chrome driver, login, and read posts."""
+        options = uc.ChromeOptions()
+
+        headless = os.getenv('HEADLESS', 'true').lower() == 'true'
+        if headless:
+            options.add_argument('--headless=new')
+
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--window-size=1920,1080')
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_argument('--disable-infobars')
+        options.add_argument('--disable-extensions')
+        options.add_argument('--disable-popup-blocking')
+        options.add_argument('--start-maximized')
+        options.add_argument('--lang=zh-CN,zh,en-US,en')
+
+        # Use Chrome installed by workflow if available
+        chrome_path = f"/opt/hostedtoolcache/setup-chrome/chromium/{CHROME_VERSION}.0.7499.192/x64/chrome"
+        if os.path.exists(chrome_path):
+            options.binary_location = chrome_path
+            logger.info(f"Using Chrome from: {chrome_path}")
+        else:
+            logger.info(f"Chrome {CHROME_VERSION} not found at expected path, using system Chrome")
+
+        logger.info(f"Launching undetected Chrome (v{CHROME_VERSION})...")
+        self.driver = uc.Chrome(
+            options=options,
+            use_subprocess=True,
+            version_main=CHROME_VERSION
+        )
+        self.driver.set_page_load_timeout(60)
+
+        user_agent = self.driver.execute_script("return navigator.userAgent")
+        logger.info(f"User-Agent: {user_agent}")
+
+        # Perform login
+        if self.username and self.password:
+            self.login_with_credentials()
+        elif self.cookie_str:
+            self.login_with_cookies()
+        else:
+            raise Exception("No authentication method provided")
+
+        # Read unread posts
+        self.read_posts()
+
+        # Read new posts
+        self.read_new_posts()
+
     def start(self):
         """Main entry point"""
         try:
-            # Setup Chrome options
-            options = uc.ChromeOptions()
-            
-            headless = os.getenv('HEADLESS', 'true').lower() == 'true'
-            if headless:
-                options.add_argument('--headless=new')
-            
-            options.add_argument('--no-sandbox')
-            options.add_argument('--disable-dev-shm-usage')
-            options.add_argument('--disable-gpu')
-            options.add_argument('--window-size=1920,1080')
-            options.add_argument('--disable-blink-features=AutomationControlled')
-            options.add_argument('--disable-infobars')
-            options.add_argument('--disable-extensions')
-            options.add_argument('--disable-popup-blocking')
-            options.add_argument('--start-maximized')
-            options.add_argument('--lang=zh-CN,zh,en-US,en')
-            
-            # Use Chrome installed by workflow if available
-            chrome_path = "/opt/hostedtoolcache/setup-chrome/chromium/143.0.7499.192/x64/chrome"
-            if os.path.exists(chrome_path):
-                options.binary_location = chrome_path
-                logger.info(f"Using Chrome from: {chrome_path}")
-            else:
-                logger.info("Chrome 143 not found at expected path, using system Chrome")
-            
-            logger.info("Launching undetected Chrome (v143)...")
-            self.driver = uc.Chrome(
-                options=options,
-                use_subprocess=True,
-                version_main=143
-            )
-            self.driver.set_page_load_timeout(60)
-            
-            user_agent = self.driver.execute_script("return navigator.userAgent")
-            logger.info(f"User-Agent: {user_agent}")
-            
-            # Perform login
-            if self.username and self.password:
-                self.login_with_credentials()
-            elif self.cookie_str:
-                self.login_with_cookies()
-            else:
-                raise Exception("No authentication method provided")
-            
-            # Read unread posts
-            self.read_posts()
-            
-            # Read new posts
-            self.read_new_posts()
-            
+            self._setup_driver()
         except Exception as e:
             logger.error(f"Error: {e}")
             raise
@@ -93,60 +99,8 @@ class DiscourseAutoRead:
     def start_without_quit(self):
         """Main entry point - keeps browser open for subsequent operations"""
         try:
-            # Setup Chrome options
-            options = uc.ChromeOptions()
-            
-            headless = os.getenv('HEADLESS', 'true').lower() == 'true'
-            if headless:
-                options.add_argument('--headless=new')
-            
-            options.add_argument('--no-sandbox')
-            options.add_argument('--disable-dev-shm-usage')
-            options.add_argument('--disable-gpu')
-            options.add_argument('--window-size=1920,1080')
-            options.add_argument('--disable-blink-features=AutomationControlled')
-            options.add_argument('--disable-infobars')
-            options.add_argument('--disable-extensions')
-            options.add_argument('--disable-popup-blocking')
-            options.add_argument('--start-maximized')
-            options.add_argument('--lang=zh-CN,zh,en-US,en')
-
-            # Use Chrome installed by workflow if available
-            chrome_path = "/opt/hostedtoolcache/setup-chrome/chromium/143.0.7499.192/x64/chrome"
-            if os.path.exists(chrome_path):
-                options.binary_location = chrome_path
-                logger.info(f"Using Chrome from: {chrome_path}")
-            else:
-                logger.info("Chrome 143 not found at expected path, using system Chrome")
-
-            logger.info("Launching undetected Chrome (v143)...")
-            self.driver = uc.Chrome(
-                options=options,
-                use_subprocess=True,
-                version_main=143
-            )
-            self.driver.set_page_load_timeout(60)
-
-            user_agent = self.driver.execute_script("return navigator.userAgent")
-            logger.info(f"User-Agent: {user_agent}")
-
-            # Perform login
-            if self.username and self.password:
-                self.login_with_credentials()
-            elif self.cookie_str:
-                self.login_with_cookies()
-            else:
-                raise Exception("No authentication method provided")
-            
-            # Read unread posts
-            self.read_posts()
-            
-            # Read new posts
-            self.read_new_posts()
-            
-            # Note: Driver is NOT quit here - will be used for TuneHub check-in
+            self._setup_driver()
             logger.info("Forum tasks completed. Browser kept alive for TuneHub check-in.")
-            
         except Exception as e:
             logger.error(f"Error: {e}")
             if self.driver:
@@ -779,7 +733,6 @@ class DiscourseAutoRead:
                 # Final attempt failed - log page state for debugging and try ESC
                 logger.info("No announcement dialog found after 3 attempts.")
                 try:
-                    from selenium.webdriver.common.keys import Keys
                     self.driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
                     logger.info("Sent ESC key as fallback to dismiss any overlay.")
                     time.sleep(1)
@@ -823,6 +776,20 @@ class DiscourseAutoRead:
 
         logger.error(f"AnyRouter sign-in failed after {max_retries} attempts.")
         return False
+
+    def _cleanup_tabs(self, keep_handle):
+        """Close all browser tabs except keep_handle, then switch to it."""
+        for h in self.driver.window_handles:
+            if h != keep_handle:
+                try:
+                    self.driver.switch_to.window(h)
+                    self.driver.close()
+                except Exception:
+                    pass
+        try:
+            self.driver.switch_to.window(keep_handle)
+        except Exception:
+            self.driver.switch_to.window(self.driver.window_handles[0])
 
     def _anyrouter_checkin_attempt(self):
         """Single attempt of AnyRouter sign-in flow. Returns True on success, False on failure."""
@@ -961,27 +928,14 @@ class DiscourseAutoRead:
                     anyrouter_handle = handle
 
             # Close extra tabs and consolidate to a single window
-            def _cleanup_tabs(keep_handle):
-                for h in self.driver.window_handles:
-                    if h != keep_handle:
-                        try:
-                            self.driver.switch_to.window(h)
-                            self.driver.close()
-                        except Exception:
-                            pass
-                try:
-                    self.driver.switch_to.window(keep_handle)
-                except Exception:
-                    self.driver.switch_to.window(self.driver.window_handles[0])
-
             # Evaluate results in priority order
             if success_handle:
-                _cleanup_tabs(success_handle)
+                self._cleanup_tabs(success_handle)
                 logger.info("AnyRouter sign-in successful! Redirected to /console/token.")
                 return True
 
             if failure_handle:
-                _cleanup_tabs(original_window if original_window in self.driver.window_handles
+                self._cleanup_tabs(original_window if original_window in self.driver.window_handles
                               else self.driver.window_handles[0])
                 logger.warning(f"AnyRouter sign-in failed: {failure_reason}.")
                 return False
@@ -990,7 +944,7 @@ class DiscourseAutoRead:
             target = anyrouter_handle or original_window
             if target not in self.driver.window_handles:
                 target = self.driver.window_handles[0]
-            _cleanup_tabs(target)
+            self._cleanup_tabs(target)
 
             # Verify by navigating to /console/token
             current_url = self.driver.current_url
