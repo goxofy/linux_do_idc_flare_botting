@@ -13,7 +13,7 @@
 - ✅ 可选录屏功能
 - ✅ **TuneHub 自动签到**
 - ✅ **AnyRouter 自动签到**
-- ✅ **sign.qaq.al 自动签到**（含 PoW 计算）
+- ✅ **GGBOOM 自动签到**（sign.qaq.al，含 PoW 计算）
 
 ## 快速开始
 
@@ -93,9 +93,9 @@ schedule:
 
 **无需额外配置**，只要你的 `TARGET_URL` 是 `https://linux.do`，签到功能就会自动启用。
 
-## sign.qaq.al 自动签到
+## GGBOOM 自动签到
 
-当 `TARGET_URL` 或 `TARGET_URL_2` 包含 `linux.do` 时，程序会在 AnyRouter 签到完成后自动进行 sign.qaq.al 签到。
+当 `TARGET_URL` 或 `TARGET_URL_2` 包含 `linux.do` 时，程序会在 AnyRouter 签到完成后自动进行 GGBOOM（sign.qaq.al）签到。
 
 **签到流程：**
 1. 使用 Linux DO SSO 登录
