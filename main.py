@@ -1210,14 +1210,15 @@ class DiscourseAutoRead:
             logger.info("Waiting for check-in result...")
             time.sleep(2)
 
-            page_text = self.driver.find_element(By.TAG_NAME, "body").text
-            logger.info(f"Post-submit page text preview: {page_text[:300]}...")
-
             # Check for success indicators
-            success_keywords = ["签到成功", "今日已签到", "获得", "余额"]
-            for keyword in success_keywords:
-                if keyword in page_text:
-                    logger.info(f"Check-in success indicator found: '{keyword}'")
+            try:
+                page_text = self.driver.find_element(By.TAG_NAME, "body").text
+                success_keywords = ["签到成功", "今日已签到", "获得"]
+                found_indicators = [k for k in success_keywords if k in page_text]
+                if found_indicators:
+                    logger.info(f"Success indicators: {found_indicators}")
+            except Exception as e:
+                logger.debug(f"Could not check success indicators: {e}")
 
             logger.info("sign.qaq.al check-in completed successfully!")
             return True
