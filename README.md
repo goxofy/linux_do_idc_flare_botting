@@ -11,8 +11,8 @@
 - ✅ 随机点赞
 - ✅ 支持多个论坛
 - ✅ 可选录屏功能
-- ✅ **TuneHub 自动签到**（通过 Linux DO SSO）
-- ✅ **AnyRouter 自动签到**（通过 Linux DO SSO）
+- ✅ **TuneHub 自动签到**
+- ✅ **AnyRouter 自动签到**
 
 ## 快速开始
 
