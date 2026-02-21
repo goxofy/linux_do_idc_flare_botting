@@ -84,24 +84,6 @@ schedule:
 - ⚠️ 不要过于频繁运行，以免被论坛封禁
 - ⚠️ 本项目仅供学习交流使用
 
-## TuneHub 自动签到
-
-当 `TARGET_URL` 或 `TARGET_URL_2` 包含 `linux.do` 时，程序会在完成Linux DO 任务后自动进行 TuneHub 签到。
-
-**无需额外配置**，只要你的 `TARGET_URL` 是 `https://linux.do`，签到功能就会自动启用。
-
-## AnyRouter 自动签到
-
-当 `TARGET_URL` 或 `TARGET_URL_2` 包含 `linux.do` 时，程序会在 TuneHub 签到完成后自动进行 AnyRouter 签到。
-
-**无需额外配置**，只要你的 `TARGET_URL` 是 `https://linux.do`，签到功能就会自动启用。
-
-## GGBOOM 自动签到
-
-当 `TARGET_URL` 或 `TARGET_URL_2` 包含 `linux.do` 时，程序会在 AnyRouter 签到完成后自动进行 GGBOOM（sign.qaq.al）签到。
-
-**无需额外配置**，只要你的 `TARGET_URL` 是 `https://linux.do`，签到功能就会自动启用。
-
 ## License
 
 MIT
