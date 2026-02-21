@@ -1068,17 +1068,13 @@ class DiscourseAutoRead:
             logger.info("Waiting 8 seconds for page to load...")
             time.sleep(8)
 
-            # Debug: print current URL and full page content
+            # Get page content for status check
             logger.info(f"Current URL after wait: {self.driver.current_url}")
             try:
                 page_text = self.driver.find_element(By.TAG_NAME, "body").text
-                logger.info(f"Full page text (first 800 chars): {page_text[:800]}")
             except Exception as e:
                 logger.error(f"Failed to get page text: {e}")
                 page_text = ""
-
-            # Check page text for check-in status
-            logger.info(f"Page text preview: {page_text[:200]}...")
 
             # Try to get status from specific element first
             try:
