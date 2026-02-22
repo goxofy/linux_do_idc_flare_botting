@@ -100,11 +100,9 @@ class DiscourseAutoRead:
         """Main entry point - keeps browser open for subsequent operations"""
         try:
             self._setup_driver()
-            logger.info("Forum tasks completed. Browser kept alive for TuneHub check-in.")
+            logger.info("Forum tasks completed. Browser kept alive for check-ins.")
         except Exception as e:
             logger.error(f"Error: {e}")
-            if self.driver:
-                self.driver.quit()
             raise
 
     def login_with_credentials(self):
@@ -207,7 +205,7 @@ class DiscourseAutoRead:
         """Read unread posts"""
         logger.info("Starting to read posts...")
         
-        max_topics = int(os.getenv('MAX_TOPICS', 10))
+        max_topics = int(os.getenv('MAX_TOPICS', '10'))
         count = 0
         
         while count < max_topics:
@@ -436,7 +434,7 @@ class DiscourseAutoRead:
     def random_like(self):
         """Random like 2-3 posts during reading"""
         # like_count = random.randint(2, 3)
-        max_likes = int(os.getenv('MAX_LIKES', 5))
+        max_likes = int(os.getenv('MAX_LIKES', '5'))
         like_count = random.randint((max_likes-1), max_likes)
         
         logger.info(f"Attempting to like {like_count} posts...")
@@ -1009,7 +1007,7 @@ class DiscourseAutoRead:
                     try:
                         body_text = self.driver.find_element(By.TAG_NAME, "body").text
                         logger.error(f"Current page content: {body_text[:500]}")
-                    except:
+                    except Exception:
                         pass
                     return False
 
@@ -1043,11 +1041,7 @@ class DiscourseAutoRead:
             logger.info("Waiting for redirect to /app page...")
             try:
                 wait = WebDriverWait(self.driver, 20)
-                wait.until(lambda d: any(
-                    "sign.qaq.al/app" in d.current_url
-                    or "sign.qaq.al" in d.current_url and "/app" in d.current_url
-                    for _ in [None]
-                ))
+                wait.until(EC.url_contains("sign.qaq.al/app"))
             except TimeoutException:
                 # Scan all tabs for the /app page
                 for handle in self.driver.window_handles:
@@ -1130,7 +1124,7 @@ class DiscourseAutoRead:
                     try:
                         cards = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-tier-id]')
                         logger.error(f"Available difficulty cards: {[c.get_attribute('data-tier-id') + ':' + c.text[:30] for c in cards]}")
-                    except:
+                    except Exception:
                         pass
                     return False
 
