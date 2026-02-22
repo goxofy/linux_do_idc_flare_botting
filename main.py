@@ -1263,19 +1263,19 @@ def main():
             )
             
             if is_linux_do:
-                # For linux.do: keep browser open for TuneHub check-in
-                try:
-                    bot.start_without_quit()
-                except Exception as e:
-                    logger.error(f"LinuxDO forum browsing error: {e}")
-                    logger.info("Continuing to check-in flow despite forum error...")
-                
                 # Check if check-ins are enabled (default: disabled)
                 enable_tunehub = os.getenv('ENABLE_TUNEHUB_CHECKIN', '').lower() in ('true', 'yes', '1')
                 enable_anyrouter = os.getenv('ENABLE_ANYROUTER_CHECKIN', '').lower() in ('true', 'yes', '1')
                 enable_ggboom = os.getenv('ENABLE_GGBOOM_CHECKIN', '').lower() in ('true', 'yes', '1')
 
-                # Immediately perform TuneHub check-in while session is active
+                try:
+                    # For linux.do: keep browser open for check-ins
+                    bot.start_without_quit()
+                except Exception as e:
+                    logger.error(f"LinuxDO forum browsing error: {e}")
+                    logger.info("Continuing to check-in flow despite forum error...")
+
+                # Immediately perform check-ins while session is active
                 if enable_tunehub:
                     try:
                         logger.info("=" * 50)
@@ -1284,7 +1284,6 @@ def main():
                     except Exception as e:
                         logger.error(f"TuneHub check-in error: {e}")
 
-                # Immediately perform AnyRouter sign-in using the same session
                 if enable_anyrouter:
                     try:
                         logger.info("=" * 50)
@@ -1293,7 +1292,6 @@ def main():
                     except Exception as e:
                         logger.error(f"AnyRouter sign-in error: {e}")
 
-                # Perform sign.qaq.al check-in using the same session
                 if enable_ggboom:
                     try:
                         logger.info("=" * 50)
@@ -1301,10 +1299,11 @@ def main():
                         bot.qaqal_checkin()
                     except Exception as e:
                         logger.error(f"sign.qaq.al check-in error: {e}")
-                finally:
-                    if bot.driver:
-                        bot.driver.quit()
-                        logger.info("Linux DO browser closed.")
+
+                # Always close browser after check-ins
+                if bot.driver:
+                    bot.driver.quit()
+                    logger.info("Linux DO browser closed.")
             else:
                 # For other forums: normal start with auto-quit
                 bot.start()
