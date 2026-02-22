@@ -48,6 +48,9 @@ jobs:
           HEADLESS: false
           LOGIN_TIMEOUT: 120
           ENABLE_RECORDING: ${{ vars.ENABLE_RECORDING || 'false' }}
+          ENABLE_TUNEHUB_CHECKIN: ${{ vars.ENABLE_TUNEHUB_CHECKIN || 'false' }}
+          ENABLE_ANYROUTER_CHECKIN: ${{ vars.ENABLE_ANYROUTER_CHECKIN || 'false' }}
+          ENABLE_GGBOOM_CHECKIN: ${{ vars.ENABLE_GGBOOM_CHECKIN || 'false' }}
         run: |
           # Start Xvfb
           export DISPLAY=:99
